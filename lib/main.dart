@@ -1,16 +1,18 @@
-import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/services/audio_service.dart';
+import 'features/oracle/data/quote_repository.dart';
+import 'features/oracle/data/speech_service.dart';
+import 'features/oracle/data/tts_service.dart';
+import 'features/oracle/presentation/cubit/conversation_cubit.dart';
+import 'features/oracle/presentation/cubit/conversation_state.dart';
 import 'features/stage/presentation/cubit/stage_cubit.dart';
-import 'features/stage/presentation/cubit/stage_state.dart';
 import 'features/stage/presentation/widgets/chibi_stage_view.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   try {
     await dotenv.load(fileName: ".env");
   } catch (e) {
@@ -34,6 +36,14 @@ class ChibiKrishnaApp extends StatelessWidget {
       providers: [
         BlocProvider<StageCubit>(
           create: (context) => StageCubit(),
+        ),
+        BlocProvider<ConversationCubit>(
+          create: (context) => ConversationCubit(
+            stageCubit: context.read<StageCubit>(),
+            speechService: SpeechService(),
+            ttsService: TtsService(),
+            quoteRepository: QuoteRepository(),
+          )..initialize(),
         ),
       ],
       child: MaterialApp(
@@ -74,34 +84,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  Timer? _speechTimer;
-
-  void _simulateSpeaking(BuildContext context) {
-    final stageCubit = context.read<StageCubit>();
-    stageCubit.setAnimationState(ChibiAnimationState.speaking);
-    widget.audioService.setAudioDucked(true);
-
-    _speechTimer?.cancel();
-    final random = Random();
-    int count = 0;
-    _speechTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (count >= 40) { // 4 seconds speech loop
-        timer.cancel();
-        stageCubit.updateLipSync(0.0);
-        stageCubit.setAnimationState(ChibiAnimationState.idle);
-        widget.audioService.setAudioDucked(false);
-      } else {
-        // RMS amplitude simulation driving JawOpen morph target
-        final rmsAmplitude = 0.2 + (random.nextDouble() * 0.8);
-        stageCubit.updateLipSync(rmsAmplitude);
-        count++;
-      }
-    });
-  }
+  final TextEditingController _textController = TextEditingController();
 
   @override
   void dispose() {
-    _speechTimer?.cancel();
+    _textController.dispose();
     widget.audioService.dispose();
     super.dispose();
   }
@@ -118,86 +105,124 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(' 🌸'),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline, color: Color(0xFFFFD700)),
-            onPressed: () {
-              showAboutDialog(
-                context: context,
-                applicationName: 'Chibi Krishna AI',
-                applicationVersion: 'v1.0 (Sprint 1)',
-                applicationIcon: const Text('🪶', style: TextStyle(fontSize: 32)),
-                children: [
-                  const Text('Real-time voice-to-voice 3D avatar of Lord Krishna with Bhagavad Gita scriptural wisdom.'),
-                ],
-              );
-            },
-          ),
-        ],
       ),
       body: Stack(
         children: [
-          // 3D Stage View
-          const Positioned.fill(
-            child: ChibiStageView(),
-          ),
+          const Positioned.fill(child: ChibiStageView()),
 
-          // Interactive Testing Control Bar for Sprint 1 Stage Animations
+          // Response text — shows what Krishna just said (MVP dev visibility;
+          // no bespoke chat-bubble chrome yet, that's MVP-04 territory).
           Positioned(
-            top: 20,
+            top: 16,
             left: 16,
             right: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF161824).withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.4)),
+            child: BlocBuilder<ConversationCubit, ConversationState>(
+              buildWhen: (prev, curr) => prev.lastResponseText != curr.lastResponseText,
+              builder: (context, state) {
+                if (state.lastResponseText == null) return const SizedBox.shrink();
+                return _ResponseCard(text: state.lastResponseText!);
+              },
+            ),
+          ),
+
+          // Mic control + text fallback.
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 24,
+            child: BlocBuilder<ConversationCubit, ConversationState>(
+              builder: (context, state) {
+                if (state.showTextInput) {
+                  return _TextFallback(
+                    controller: _textController,
+                    reason: state.fallbackReason,
+                    onSubmit: (text) {
+                      context.read<ConversationCubit>().submitTypedText(text);
+                      _textController.clear();
+                    },
+                  );
+                }
+                return _MicButton(
+                  isListening: state.isListening,
+                  isBusy: state.isBusy,
+                  onTap: () => context.read<ConversationCubit>().startListening(),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResponseCard extends StatelessWidget {
+  final String text;
+  const _ResponseCard({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161824).withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+}
+
+class _MicButton extends StatelessWidget {
+  final bool isListening;
+  final bool isBusy;
+  final VoidCallback onTap;
+
+  const _MicButton({required this.isListening, required this.isBusy, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isListening)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                'Listening…',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13),
               ),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _ActionButton(
-                      label: 'Flute Idle',
-                      icon: Icons.music_note,
-                      onPressed: () {
-                        _speechTimer?.cancel();
-                        context.read<StageCubit>().setAnimationState(ChibiAnimationState.idle);
-                        context.read<StageCubit>().updateLipSync(0.0);
-                        widget.audioService.setAudioDucked(false);
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _ActionButton(
-                      label: 'Thinking',
-                      icon: Icons.psychology,
-                      onPressed: () {
-                        _speechTimer?.cancel();
-                        context.read<StageCubit>().setAnimationState(ChibiAnimationState.thinking);
-                        context.read<StageCubit>().updateLipSync(0.0);
-                        widget.audioService.setAudioDucked(false);
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _ActionButton(
-                      label: 'Simulate Voice',
-                      icon: Icons.graphic_eq,
-                      onPressed: () => _simulateSpeaking(context),
-                    ),
-                    const SizedBox(width: 8),
-                    _ActionButton(
-                      label: 'Blessing Pose',
-                      icon: Icons.auto_awesome,
-                      onPressed: () {
-                        _speechTimer?.cancel();
-                        context.read<StageCubit>().setAnimationState(ChibiAnimationState.blessing);
-                        context.read<StageCubit>().updateLipSync(0.0);
-                        widget.audioService.setAudioDucked(false);
-                      },
-                    ),
-                  ],
+            ),
+          // Mic-glow overlay per MVP-02: listening feedback is UI-only, not a
+          // dedicated Rive pose.
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isListening
+                  ? const Color(0xFFFFD700).withValues(alpha: 0.25)
+                  : Colors.transparent,
+            ),
+            child: Center(
+              child: ElevatedButton(
+                onPressed: isBusy ? null : onTap,
+                style: ElevatedButton.styleFrom(
+                  shape: const CircleBorder(),
+                  padding: const EdgeInsets.all(18),
+                  backgroundColor: const Color(0xFFFFD700),
+                  disabledBackgroundColor: const Color(0xFF25293A),
+                ),
+                child: Icon(
+                  isListening ? Icons.mic : Icons.mic_none,
+                  color: isBusy ? Colors.white38 : Colors.black87,
+                  size: 28,
                 ),
               ),
             ),
@@ -208,29 +233,45 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _ActionButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback onPressed;
+class _TextFallback extends StatelessWidget {
+  final TextEditingController controller;
+  final FallbackReason reason;
+  final ValueChanged<String> onSubmit;
 
-  const _ActionButton({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-  });
+  const _TextFallback({required this.controller, required this.reason, required this.onSubmit});
 
   @override
   Widget build(BuildContext context) {
-    return ElevatedButton.icon(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF25293A),
-        foregroundColor: const Color(0xFFFFD700),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    final hint = reason == FallbackReason.permissionDenied
+        ? 'Mic unavailable — type your question instead'
+        : "Didn't catch that — type your question instead";
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161824).withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.4)),
       ),
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      label: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                border: InputBorder.none,
+              ),
+              onSubmitted: onSubmit,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.send, color: Color(0xFFFFD700)),
+            onPressed: () => onSubmit(controller.text),
+          ),
+        ],
+      ),
     );
   }
 }
