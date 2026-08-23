@@ -1,19 +1,16 @@
 import 'package:flutter/foundation.dart' show FlutterExceptionHandler;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:rive/rive.dart' hide LinearGradient;
+import 'package:rive/rive.dart' as rive;
 import '../cubit/stage_cubit.dart';
 import '../cubit/stage_state.dart';
 
 /// Pose contract for the Rive state machine (see docs/requirements/assets_v3.md):
 /// input "pose" (number) 0=idle 1=listening 2=thinking 3=speaking 4=blessing,
 /// input "jawOpen" (number 0-1), trigger "blessBurst" fired on entering blessing.
-/// If the loaded .riv doesn't have these yet, this widget degrades gracefully:
-/// state machine found but missing an input -> that input is simply not driven;
-/// no state machine but has animations -> loops the first animation as idle;
-/// neither -> renders the artboard statically. Check debug console on run for
-/// what was actually found in the current asset.
+/// If the loaded .riv doesn't have a matching input, that input is simply not
+/// driven; if the artboard has no state machine at all, the placeholder
+/// background shows instead. Check debug console on run for what was found.
 class ChibiStageView extends StatefulWidget {
   const ChibiStageView({super.key});
 
@@ -22,20 +19,14 @@ class ChibiStageView extends StatefulWidget {
 }
 
 class _ChibiStageViewState extends State<ChibiStageView> {
-  Artboard? _artboard;
-  StateMachineController? _smController;
-  SMINumber? _poseInput;
-  SMINumber? _jawOpenInput;
-  SMITrigger? _blessBurstInput;
+  rive.RiveWidgetController? _controller;
+  rive.NumberInput? _poseInput;
+  rive.NumberInput? _jawOpenInput;
+  rive.TriggerInput? _blessBurstInput;
   ChibiAnimationState? _lastAppliedPose;
 
-  // Rive throws paint-time exceptions from deep inside its own draw() calls
-  // (e.g. a fill/shape type this runtime doesn't recognize, usually a file
-  // exported by a newer Rive editor than this package supports). Those don't
-  // propagate through a normal try/catch since they happen after build(), and
-  // left unhandled they repeat on every single frame. This guard catches that
-  // once and falls back to the placeholder background instead of repainting
-  // a broken artboard forever.
+  // Same defensive guard as before, kept in case a *different* future .riv
+  // trips a new incompatibility — costs nothing when rendering is healthy.
   bool _renderBroken = false;
   FlutterExceptionHandler? _previousOnError;
 
@@ -53,11 +44,8 @@ class _ChibiStageViewState extends State<ChibiStageView> {
       if (fromRive && !_renderBroken) {
         _renderBroken = true;
         debugPrint(
-          'Rive: this artboard is throwing during rendering (likely a '
-          'shape/fill type this rive package version doesn\'t support — '
-          'commonly means the .riv was exported by a newer Rive editor '
-          'version). Falling back to the placeholder background instead of '
-          'repainting a broken frame. Details: ${details.exception}',
+          'Rive: this artboard is throwing during rendering — falling back '
+          'to the placeholder background. Details: ${details.exception}',
         );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) setState(() {});
@@ -69,42 +57,43 @@ class _ChibiStageViewState extends State<ChibiStageView> {
 
   Future<void> _loadRive() async {
     try {
-      // Required before any RiveFile.import — loads the native/WASM layout
-      // engine Rive's newer runtime depends on.
-      await RiveFile.initialize();
-      final data = await rootBundle.load('assets/rive/chibi_krishna.riv');
-      final file = RiveFile.import(data);
-      final artboard = file.mainArtboard;
-
-      if (artboard.stateMachines.isNotEmpty) {
-        final smName = artboard.stateMachines.first.name;
-        final controller = StateMachineController.fromArtboard(artboard, smName);
-        if (controller != null) {
-          artboard.addController(controller);
-          _smController = controller;
-          for (final input in controller.inputs) {
-            final name = input.name.toLowerCase();
-            if (name == 'pose' && input is SMINumber) _poseInput = input;
-            if (name == 'jawopen' && input is SMINumber) _jawOpenInput = input;
-            if (name == 'blessburst' && input is SMITrigger) _blessBurstInput = input;
-          }
-          debugPrint(
-            'Rive: state machine "$smName" found. '
-            'pose input: ${_poseInput != null}, jawOpen input: ${_jawOpenInput != null}, '
-            'blessBurst input: ${_blessBurstInput != null}. '
-            'Inputs present: ${controller.inputs.map((i) => i.name).join(', ')}',
-          );
-        }
-      } else if (artboard.animations.isNotEmpty) {
-        final animName = artboard.animations.first.name;
-        artboard.addController(SimpleAnimation(animName));
-        debugPrint('Rive: no state machine in this file yet — looping animation "$animName" as a placeholder idle.');
-      } else {
-        debugPrint('Rive: no state machine or animation in this file yet — rendering static artwork.');
+      await rive.RiveNative.init();
+      final file = await rive.File.asset(
+        'assets/rive/chibi_krishna.riv',
+        riveFactory: rive.Factory.flutter,
+      );
+      if (file == null) {
+        debugPrint('Rive: File.asset returned null for assets/rive/chibi_krishna.riv');
+        return;
       }
 
+      final artboard = file.defaultArtboard();
+      if (artboard == null) {
+        debugPrint('Rive: no default artboard in this file.');
+        return;
+      }
+
+      if (artboard.stateMachineCount() == 0) {
+        debugPrint('Rive: artboard "${artboard.name}" has no state machine — nothing to drive yet.');
+        return;
+      }
+
+      final controller = rive.RiveWidgetController(file);
+      for (final input in controller.stateMachine.inputs) {
+        final name = input.name.toLowerCase();
+        if (name == 'pose' && input is rive.NumberInput) _poseInput = input;
+        if (name == 'jawopen' && input is rive.NumberInput) _jawOpenInput = input;
+        if (name == 'blessburst' && input is rive.TriggerInput) _blessBurstInput = input;
+      }
+      debugPrint(
+        'Rive: artboard "${artboard.name}", state machine "${controller.stateMachine.name}" found. '
+        'pose input: ${_poseInput != null}, jawOpen input: ${_jawOpenInput != null}, '
+        'blessBurst input: ${_blessBurstInput != null}. '
+        'Inputs present: ${controller.stateMachine.inputs.map((i) => i.name).join(', ')}',
+      );
+
       if (!mounted) return;
-      setState(() => _artboard = artboard);
+      setState(() => _controller = controller);
     } catch (e, st) {
       debugPrint('Rive: failed to load assets/rive/chibi_krishna.riv: $e\n$st');
     }
@@ -126,7 +115,7 @@ class _ChibiStageViewState extends State<ChibiStageView> {
   }
 
   void _applyState(StageState state) {
-    if (_smController == null) return;
+    if (_controller == null) return;
     _poseInput?.value = _poseNumber(state.animationState);
     _jawOpenInput?.value = state.jawOpen;
     if (state.animationState == ChibiAnimationState.blessing && _lastAppliedPose != ChibiAnimationState.blessing) {
@@ -137,7 +126,7 @@ class _ChibiStageViewState extends State<ChibiStageView> {
 
   @override
   Widget build(BuildContext context) {
-    final showRive = _artboard != null && !_renderBroken;
+    final showRive = _controller != null && !_renderBroken;
     return BlocListener<StageCubit, StageState>(
       listener: (context, state) => _applyState(state),
       child: Container(
@@ -149,7 +138,7 @@ class _ChibiStageViewState extends State<ChibiStageView> {
           ),
         ),
         child: showRive
-            ? Rive(artboard: _artboard!, fit: BoxFit.contain)
+            ? rive.RiveWidget(controller: _controller!, fit: rive.Fit.contain)
             : const SizedBox.expand(),
       ),
     );
@@ -158,7 +147,7 @@ class _ChibiStageViewState extends State<ChibiStageView> {
   @override
   void dispose() {
     FlutterError.onError = _previousOnError;
-    _smController?.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 }

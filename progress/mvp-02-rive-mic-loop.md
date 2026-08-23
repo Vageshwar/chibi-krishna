@@ -2,7 +2,7 @@
 
 **GitHub issues:** [#5](https://github.com/Vageshwar/chibi-krishna/issues/5) (Rive stage), [#8](https://github.com/Vageshwar/chibi-krishna/issues/8) (mic capture), [#9](https://github.com/Vageshwar/chibi-krishna/issues/9) (quote engine), [#10](https://github.com/Vageshwar/chibi-krishna/issues/10) (TTS + mouth-flap), [#11](https://github.com/Vageshwar/chibi-krishna/issues/11) (orchestrator) — all in the **MVP — Alive Krishna, No AI Yet** milestone.
 **Branch:** `mvp-02-rive-mic-loop`
-**Status:** Implemented and verified running on Edge (web), awaiting review
+**Status:** Implemented and verified running on Edge (web), **character now actually renders**, awaiting review
 
 ## What changed
 
@@ -27,21 +27,30 @@ State machine name **`ChibiSM`** (any name works — the code binds to the artbo
 
 Until a state machine with at least `pose` exists, the app loops whatever plain animation is first in the file (or shows it static) rather than reacting to app state.
 
-## What the `.riv` file actually contains (confirmed by running the app)
+## What the `.riv` file actually contains, and the rendering fix (both confirmed by running the app)
 
-A `flutter_test`-based introspection attempt (loading the file via `RiveFile.import` inside a test targeting Edge, since Chrome isn't installed on this machine) hung and timed out after 12 minutes launching the browser under the test runner — abandoned. Running the real app instead answered it directly:
+A `flutter_test`-based introspection attempt (loading the file via `RiveFile.import` inside a test targeting Edge, since Chrome isn't installed on this machine) hung and timed out after 12 minutes launching the browser under the test runner — abandoned in favor of just running the real app, which answered everything directly.
 
-- The file **does** have a state machine, named **`KrishnaJI_SM`** — but it currently has **zero inputs** (`Inputs present: ` came back empty). It's a bare shell, matching "basic" — see the Required Rive states table above for what to add.
-- **The artwork itself throws a rendering exception**: `RangeError (index): Index out of range: index should be less than 2: 2` from deep inside `rive`'s `Fill.draw()` (`package:rive/src/rive_core/shapes/paint/fill.dart`). This is a paint-time error, not a load-time one, so it doesn't surface through a normal `try/catch` — and left unhandled it **repeated on every single frame** (1535 times in ~30 seconds in one test run), which would have hammered performance and flooded logs on a real device.
-  - Most likely cause: the `.riv` was exported by a newer Rive editor version than the `rive: ^0.13.20` Flutter package supports (some fill/shape type the file references isn't recognized by this runtime). Tried upgrading to `rive: ^0.14.11` to check — that turned out to be a full runtime rewrite (entirely different API: `RiveFile`/`StateMachineController`/`SMINumber`/`Rive` widget don't exist in that line at all, replaced by a new `rive_native`-backed API), too large a migration to take on inside this PR. Reverted to `^0.13.20`.
-  - **Fix applied**: `chibi_stage_view.dart` now installs a `FlutterError.onError` guard that detects a Rive-originated paint exception once, logs a clear diagnostic, and falls back to the plain gradient background instead of repainting a broken artboard forever. Verified live: the crash now fires **exactly once**, then the app stabilizes with no further errors.
-  - **Not fixed**: the underlying rendering incompatibility itself. The character currently won't visually render via this package version with this file. Options going forward (for whoever picks this up next): (a) re-export the `.riv` from the Rive editor targeting an older runtime version if the editor offers that setting, (b) simplify whatever shape/fill is triggering it, or (c) do the real `rive` 0.14.x migration as its own follow-up issue.
+**Initial finding:** the file has a state machine named **`KrishnaJI_SM`** (zero inputs — a bare shell) and **26 animation clips already built** (idle variants, blink, talking mouth, wave, thinking, accept/deny/yes, sad/crying/oh-no/odd/ouch, happy/neutral variants, oops, exhale) plus a bonus `Confetti` particle artboard — much richer than "basic" implied. The user separately uploaded 16 more `.riv` files expecting per-mood exports; all 16 turned out to be **byte-for-byte identical** to `chibi_krishna.riv` (same MD5) since Rive always exports the whole project, not a single clip — deleted as pure duplicates, no content lost.
+
+**The rendering blocker (now fixed):** the artwork threw `RangeError (index): Index out of range: index should be less than 2: 2` from deep inside `rive: ^0.13.20`'s `Fill.draw()` — a paint-time error, so it didn't surface through `try/catch`, and unhandled it repeated on **every single frame** (1535 times in ~30s in one run). Root cause: `rive: 0.13.20` is that package's now-abandoned **legacy runtime** (confirmed via its own README) — the file was built with a current Rive editor and needs the actively-maintained runtime.
+
+**Fix:** migrated to `rive: ^0.14.11` (the current `rive_native`-backed runtime, entirely different API — `File`/`RiveWidgetController`/`NumberInput`/`TriggerInput`/`RiveWidget` replace the old `RiveFile`/`StateMachineController`/`SMINumber`/`SMITrigger`/`Rive` classes). Verified live end-to-end:
+- A standalone smoke test against `Factory.flutter` rendering loaded and painted the artboard with **zero errors**.
+- The full migrated `chibi_stage_view.dart`, run in the real app, found the artboard and state machine, and **the render-error guard never fired** — checked output stayed stable over repeated polls, no crash, no fallback needed.
+- The `pose`/`jawOpen`/`blessBurst` input-lookup logic carried over almost 1:1 to the new API (`stateMachine.inputs`, `NumberInput.value`, `TriggerInput.fire()`), so the contract in the table above is unchanged.
+
+The `FlutterError.onError` guard is kept in the code as a safety net for whatever the *next* file revision might trip, but it's not currently doing anything — rendering is clean.
+
+**Still true:** the state machine has zero inputs, so the character won't visibly react to app state yet — see the Required Rive states table above. That's now the only remaining blocker to a fully "alive" character, and it's pure Rive-editor work (add 3 inputs), not a code problem.
+
 - **Not yet verified on Android** — this dev machine's Android toolchain has unresolved `cmdline-tools`/license gaps (see `CLAUDE.md`); testing happens via USB debugging separately.
 - Language selection for responses currently follows whichever STT locale actually got used (`SpeechService.isHindiLocale`) rather than a manual UI toggle — full Hindi-first chrome/toggle is MVP-04 (`#7`), not yet built. In this dev environment Edge's speech recognition didn't offer Hindi, so it fell back to `en_US` — expected per the documented fallback behavior, not a bug.
 
 ## Verification performed
 
 - [x] `flutter analyze` — clean.
-- [x] `flutter build web` — builds clean with the new dependencies.
-- [x] `flutter run -d edge` — app launches, mic/speech service initializes, Rive loads and its state machine is found and logged, the render-error guard was confirmed live (fires once, then stable — checked line count held steady after the fallback kicked in).
+- [x] `flutter build web` — builds clean with `rive: ^0.14.11`.
+- [x] `flutter run -d edge` — app launches, mic/speech service initializes, Rive artboard and state machine found, **no render errors**, verified stable over multiple polls.
 - [ ] Full manual click-through of the mic → quote → TTS loop (permission prompt → speak → hear response) — not done interactively in this sandboxed environment; recommend the reviewer click through this by hand.
+- [ ] Visual confirmation that the character actually *looks* right (correct proportions/colors/no missing shapes) — I can confirm it paints without crashing, not what it looks like; reviewer should eyeball it.
