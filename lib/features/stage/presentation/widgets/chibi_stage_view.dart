@@ -72,19 +72,22 @@ class _ChibiStageViewState extends State<ChibiStageView> with SingleTickerProvid
   FlutterExceptionHandler? _previousOnError;
 
   // One-time "rises into frame" entrance on cold start (splash moment) —
-  // plays once the rig is actually loaded, not before.
-  late final AnimationController _entranceController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  );
-  late final Animation<Offset> _entranceOffset = Tween<Offset>(
-    begin: const Offset(0, 1),
-    end: Offset.zero,
-  ).animate(CurvedAnimation(parent: _entranceController, curve: Curves.easeOutCubic));
+  // plays once the rig is actually loaded, not before. Built eagerly in
+  // initState (not as a lazy `late final` field initializer) — if _loadRive
+  // fails before ever touching these, a lazy initializer would instead run
+  // for the first time inside dispose(), where the vsync ticker lookup
+  // throws because the element is already deactivating.
+  late final AnimationController _entranceController;
+  late final Animation<Offset> _entranceOffset;
 
   @override
   void initState() {
     super.initState();
+    _entranceController = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+    _entranceOffset = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _entranceController, curve: Curves.easeOutCubic));
     _installRiveErrorGuard();
     _loadRive();
   }

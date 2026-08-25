@@ -39,12 +39,38 @@ dependencies:
   rive: ^0.14.11
   speech_to_text: ^7.0.0
   flutter_tts: ^4.2.0
+  google_mobile_ads: ^9.1.0
+  sqflite: ^2.4.2+1
+  path: ^1.9.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
+  flutter_native_splash: ^2.4.7
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/logo.png"
+  min_sdk_android: 21
+
+# No adaptive_icon_background/foreground: the source logo has "KRISHNA A.I"
+# text baked in near the bottom edge, close enough to the border that the
+# adaptive-icon safe-zone inset plus the OS's own circle/squircle mask would
+# very likely clip it. Legacy single-image icons don't get that extra inset,
+# so this is the safer default until a text-free, transparent-background
+# crop of just the character exists for a proper adaptive icon.
+
+flutter_native_splash:
+  color: "#0D0E15"
+  image: assets/logo.png
+  android_12:
+    image: assets/logo.png
+    icon_background_color: "#0D0E15"
+  web: false # not a shipping target (CLAUDE.md: solo-dev Android app)
 
 flutter:
   uses-material-design: true
@@ -53,6 +79,7 @@ flutter:
     - assets/audio/bg_flute_loop.mp3
     - assets/rive/chibi_krishna.riv
     - assets/gita/mvp_quotes.json
+    - assets/logo.png
     - .env
 
   # To add assets to your application, add an assets section, like this:

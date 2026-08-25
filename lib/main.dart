@@ -1,7 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/services/audio_service.dart';
+import 'features/monetization/data/ad_service.dart';
+import 'features/monetization/data/quota_repository.dart';
+import 'features/monetization/presentation/cubit/quota_cubit.dart';
+import 'features/monetization/presentation/widgets/ad_banner_bar.dart';
+import 'features/monetization/presentation/widgets/support_sheet.dart';
 import 'features/oracle/data/quote_repository.dart';
 import 'features/oracle/data/speech_service.dart';
 import 'features/oracle/data/tts_service.dart';
@@ -23,20 +31,29 @@ void main() async {
   final audioService = BackgroundAudioService();
   await audioService.initialize();
 
-  runApp(ChibiKrishnaApp(audioService: audioService));
+  final adService = AdService();
+  await adService.initialize();
+
+  runApp(ChibiKrishnaApp(audioService: audioService, adService: adService));
 }
 
 class ChibiKrishnaApp extends StatelessWidget {
   final BackgroundAudioService audioService;
+  final AdService adService;
 
-  const ChibiKrishnaApp({super.key, required this.audioService});
+  const ChibiKrishnaApp({
+    super.key,
+    required this.audioService,
+    required this.adService,
+  });
 
   @override
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        BlocProvider<StageCubit>(
-          create: (context) => StageCubit(),
+        BlocProvider<StageCubit>(create: (context) => StageCubit()),
+        BlocProvider<QuotaCubit>(
+          create: (context) => QuotaCubit(quotaRepository: QuotaRepository()),
         ),
         BlocProvider<ConversationCubit>(
           create: (context) => ConversationCubit(
@@ -44,6 +61,7 @@ class ChibiKrishnaApp extends StatelessWidget {
             speechService: SpeechService(),
             ttsService: TtsService(),
             quoteRepository: QuoteRepository(),
+            quotaCubit: context.read<QuotaCubit>(),
           )..initialize(),
         ),
       ],
@@ -69,7 +87,7 @@ class ChibiKrishnaApp extends StatelessWidget {
             ),
           ),
         ),
-        home: HomeScreen(audioService: audioService),
+        home: HomeScreen(audioService: audioService, adService: adService),
       ),
     );
   }
@@ -77,8 +95,13 @@ class ChibiKrishnaApp extends StatelessWidget {
 
 class HomeScreen extends StatefulWidget {
   final BackgroundAudioService audioService;
+  final AdService adService;
 
-  const HomeScreen({super.key, required this.audioService});
+  const HomeScreen({
+    super.key,
+    required this.audioService,
+    required this.adService,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -94,16 +117,18 @@ const _splashDismissDelay = Duration(milliseconds: 2700);
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _textController = TextEditingController();
   bool _showSplash = true;
+  Timer? _splashGreetingTimer;
+  Timer? _splashDismissTimer;
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(_splashGreetingDelay, () {
-      if (!mounted) return;
-      context.read<StageCubit>().setAnimationState(ChibiAnimationState.greeting);
+    _splashGreetingTimer = Timer(_splashGreetingDelay, () {
+      context.read<StageCubit>().setAnimationState(
+        ChibiAnimationState.greeting,
+      );
     });
-    Future.delayed(_splashDismissDelay, () {
-      if (!mounted) return;
+    _splashDismissTimer = Timer(_splashDismissDelay, () {
       setState(() => _showSplash = false);
       context.read<StageCubit>().setAnimationState(ChibiAnimationState.idle);
     });
@@ -111,85 +136,179 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _splashGreetingTimer?.cancel();
+    _splashDismissTimer?.cancel();
     _textController.dispose();
     widget.audioService.dispose();
     super.dispose();
   }
 
+  Future<bool> _showSupportSheet(
+    BuildContext context, {
+    required bool isVoluntary,
+  }) async {
+    final watchedAd = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: const Color(0xFF161824),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) =>
+          SupportSheet(adService: widget.adService, isVoluntary: isVoluntary),
+    );
+    return watchedAd == true;
+  }
+
+  // Triggered by ConversationCubit when the daily voice quota runs out —
+  // the sheet's outcome decides whether the pending question gets answered
+  // normally or downgraded (see ConversationCubit.resolveSupportPrompt).
+  Future<void> _handleQuotaSupportPrompt(BuildContext context) async {
+    final watchedAd = await _showSupportSheet(context, isVoluntary: false);
+    if (!context.mounted) return;
+    context.read<ConversationCubit>().resolveSupportPrompt(
+      watchedAd: watchedAd,
+    );
+  }
+
+  // Triggered by the top-right support button — a voluntary "Dakshina" entry
+  // point (PRD v3 §7), not gated on quota. No pending question to resolve;
+  // just grants the reward turns directly if the ad was watched.
+  Future<void> _handleVoluntarySupport(BuildContext context) async {
+    final watchedAd = await _showSupportSheet(context, isVoluntary: true);
+    if (!context.mounted || !watchedAd) return;
+    context.read<QuotaCubit>().grantRewardTurns();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Row(
-          mainAxisSize: MainAxisSize.min,
+    return BlocListener<ConversationCubit, ConversationState>(
+      listenWhen: (prev, curr) =>
+          curr.needsSupportPrompt && !prev.needsSupportPrompt,
+      listener: (context, state) => _handleQuotaSupportPrompt(context),
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
+    // No app bar — the character stage fills the whole screen, per the
+    // simplified "just Krishna, mic, and ad" layout. Top of the stage is a
+    // light sky gradient, so status bar icons need to be dark to stay
+    // legible without a dark app-bar band behind them.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        body: Stack(
           children: [
-            Text('🪶 '),
-            Text('Chibi Krishna AI'),
-            Text(' 🌸'),
-          ],
-        ),
-      ),
-      body: Stack(
-        children: [
-          const Positioned.fill(child: ChibiStageView()),
+            const Positioned.fill(child: ChibiStageView()),
 
-          // Response text — shows what Krishna just said (MVP dev visibility;
-          // no bespoke chat-bubble chrome yet, that's MVP-04 territory).
-          Positioned(
-            top: 16,
-            left: 16,
-            right: 16,
-            child: BlocBuilder<ConversationCubit, ConversationState>(
-              buildWhen: (prev, curr) => prev.lastResponseText != curr.lastResponseText,
-              builder: (context, state) {
-                if (state.lastResponseText == null) return const SizedBox.shrink();
-                return _ResponseCard(text: state.lastResponseText!);
-              },
-            ),
-          ),
-
-          // Mic control + text fallback.
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 24,
-            child: BlocBuilder<ConversationCubit, ConversationState>(
-              builder: (context, state) {
-                if (state.showTextInput) {
-                  return _TextFallback(
-                    controller: _textController,
-                    reason: state.fallbackReason,
-                    onSubmit: (text) {
-                      context.read<ConversationCubit>().submitTypedText(text);
-                      _textController.clear();
-                    },
-                  );
-                }
-                return _MicButton(
-                  isListening: state.isListening,
-                  isBusy: state.isBusy,
-                  liveTranscript: state.liveTranscript,
-                  micLevel: state.micLevel,
-                  onTap: () => context.read<ConversationCubit>().startListening(),
-                );
-              },
-            ),
-          ),
-
-          // Splash: welcome text over Krishna's bottom-to-top entrance +
-          // wave-hi greeting (see ChibiStageView / _HomeScreenState.initState).
-          // Absorbs taps while shown so the mic can't be triggered mid-intro.
-          Positioned.fill(
-            child: AbsorbPointer(
-              absorbing: _showSplash,
-              child: AnimatedOpacity(
-                opacity: _showSplash ? 1 : 0,
-                duration: const Duration(milliseconds: 500),
-                child: const _WelcomeOverlay(),
+            // Response text — what Krishna just said. Fades out on its own a
+            // few seconds after appearing rather than sitting on screen
+            // indefinitely (see _ResponseBubble). SafeArea here because
+            // there's no app bar anymore to clear the status bar for us.
+            Positioned(
+              top: 0,
+              left: 16,
+              right: 64, // clears the support button in the top-right corner
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: BlocBuilder<ConversationCubit, ConversationState>(
+                    buildWhen: (prev, curr) =>
+                        prev.lastResponseText != curr.lastResponseText,
+                    builder: (context, state) =>
+                        _ResponseBubble(text: state.lastResponseText),
+                  ),
+                ),
               ),
             ),
-          ),
-        ],
+
+            // Mic control + text fallback, stacked above the banner in a
+            // Column so the mic's position accounts for the banner's real
+            // (adaptive, device-dependent) height instead of a guessed fixed
+            // offset — that guess is exactly what let the banner sit on top
+            // of the mic button before. Collapses to just the mic's own
+            // spacing when no banner is showing (iOS, or before one loads).
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: BlocBuilder<ConversationCubit, ConversationState>(
+                        builder: (context, state) {
+                          if (state.showTextInput) {
+                            return _TextFallback(
+                              controller: _textController,
+                              reason: state.fallbackReason,
+                              onSubmit: (text) {
+                                context
+                                    .read<ConversationCubit>()
+                                    .submitTypedText(text);
+                                _textController.clear();
+                              },
+                            );
+                          }
+                          return _MicButton(
+                            isListening: state.isListening,
+                            isBusy: state.isBusy,
+                            liveTranscript: state.liveTranscript,
+                            micLevel: state.micLevel,
+                            onTap: () => context
+                                .read<ConversationCubit>()
+                                .startListening(),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // FF-06: adaptive banner, bottom chrome only — renders
+                    // nothing on iOS or before an ad has loaded.
+                    AdBannerBar(adService: widget.adService),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+
+            // Voluntary support ("Dakshina") button, PRD v3 §7 — same
+            // Support sheet as the quota-exhausted prompt, just opened by
+            // choice instead of being forced. Top-right, clear of the
+            // response bubble which sits top-left/center.
+            Positioned(
+              top: 0,
+              right: 16,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: _SupportButton(
+                    onTap: () => _handleVoluntarySupport(context),
+                  ),
+                ),
+              ),
+            ),
+
+            // Splash: welcome text over Krishna's bottom-to-top entrance +
+            // wave-hi greeting (see ChibiStageView / _HomeScreenState.initState).
+            // Absorbs taps while shown so the mic can't be triggered mid-intro.
+            Positioned.fill(
+              child: AbsorbPointer(
+                absorbing: _showSplash,
+                child: AnimatedOpacity(
+                  opacity: _showSplash ? 1 : 0,
+                  duration: const Duration(milliseconds: 500),
+                  child: const _WelcomeOverlay(),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -220,6 +339,87 @@ class _WelcomeOverlay extends StatelessWidget {
               letterSpacing: 0.5,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shows the latest response card, then fades it out on its own a few
+/// seconds later rather than leaving it on screen indefinitely. Restarts
+/// the fade timer whenever a new response arrives.
+class _ResponseBubble extends StatefulWidget {
+  final String? text;
+  const _ResponseBubble({required this.text});
+
+  @override
+  State<_ResponseBubble> createState() => _ResponseBubbleState();
+}
+
+class _ResponseBubbleState extends State<_ResponseBubble> {
+  static const _visibleDuration = Duration(seconds: 7);
+  static const _fadeDuration = Duration(milliseconds: 800);
+
+  late bool _visible = widget.text != null;
+  Timer? _fadeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.text != null) _scheduleFade();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ResponseBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.text != oldWidget.text && widget.text != null) {
+      setState(() => _visible = true);
+      _scheduleFade();
+    }
+  }
+
+  void _scheduleFade() {
+    _fadeTimer?.cancel();
+    _fadeTimer = Timer(_visibleDuration, () {
+      if (mounted) setState(() => _visible = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _fadeTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.text == null) return const SizedBox.shrink();
+    return AnimatedOpacity(
+      opacity: _visible ? 1 : 0,
+      duration: _fadeDuration,
+      child: _ResponseCard(text: widget.text!),
+    );
+  }
+}
+
+/// Voluntary "Dakshina" support entry point (PRD v3 §7) — top-right, opens
+/// the same Support sheet as the quota-exhausted prompt. Publisher-voiced
+/// throughout; never framed as Krishna asking for anything (locked decision).
+class _SupportButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _SupportButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF161824).withValues(alpha: 0.75),
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: const Padding(
+          padding: EdgeInsets.all(10),
+          child: Icon(Icons.attach_money, color: Color(0xFFFFD700), size: 22),
         ),
       ),
     );
@@ -274,9 +474,13 @@ class _MicButton extends StatelessWidget {
               child: Text(
                 liveTranscript.isEmpty ? 'Listening…' : liveTranscript,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: liveTranscript.isEmpty ? 0.6 : 1.0),
+                  color: Colors.white.withValues(
+                    alpha: liveTranscript.isEmpty ? 0.6 : 1.0,
+                  ),
                   fontSize: 14,
-                  fontStyle: liveTranscript.isEmpty ? FontStyle.italic : FontStyle.normal,
+                  fontStyle: liveTranscript.isEmpty
+                      ? FontStyle.italic
+                      : FontStyle.normal,
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 2,
@@ -365,7 +569,11 @@ class _TextFallback extends StatelessWidget {
   final FallbackReason reason;
   final ValueChanged<String> onSubmit;
 
-  const _TextFallback({required this.controller, required this.reason, required this.onSubmit});
+  const _TextFallback({
+    required this.controller,
+    required this.reason,
+    required this.onSubmit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -377,7 +585,9 @@ class _TextFallback extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF161824).withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.4)),
+        border: Border.all(
+          color: const Color(0xFFFFD700).withValues(alpha: 0.4),
+        ),
       ),
       child: Row(
         children: [
@@ -387,7 +597,9 @@ class _TextFallback extends StatelessWidget {
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: hint,
-                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                hintStyle: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                ),
                 border: InputBorder.none,
               ),
               onSubmitted: onSubmit,

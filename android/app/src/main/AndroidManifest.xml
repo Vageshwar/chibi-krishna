@@ -4,7 +4,7 @@
     <application
         android:label="chibi_krishna"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -32,6 +32,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- google_mobile_ads reads this natively before Flutter/dotenv boots, so it
+             can't come from .env. Safe to keep as the real App ID even in dev builds —
+             only actual ad *unit* IDs (gated to release builds, see AdService) can
+             trigger real ad requests; the App ID alone can't. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-4894239463483601~7397144794" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

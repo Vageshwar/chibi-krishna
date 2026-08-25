@@ -39,5 +39,20 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    # google_mobile_ads' iOS pod includes a private GoogleMobileAds_Beta.h
+    # header from inside a framework module, which Xcode's modular-includes
+    # check rejects by default (build fails with "non-modular header inside
+    # framework module"). CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES
+    # alone didn't clear it here — going straight to disabling module
+    # compilation for the offending pod's own target, which sidesteps the
+    # check entirely instead of trying to satisfy it.
+    if target.name == 'google_mobile_ads'
+      target.build_configurations.each do |config|
+        config.build_settings['DEFINES_MODULE'] = 'NO'
+      end
+    end
+    target.build_configurations.each do |config|
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+    end
   end
 end
