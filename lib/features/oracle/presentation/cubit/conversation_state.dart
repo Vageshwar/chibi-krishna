@@ -11,6 +11,13 @@ class ConversationState extends Equatable {
   final bool showTextInput;
   final FallbackReason fallbackReason;
 
+  /// Live partial transcript while listening — cleared once the turn ends.
+  final String liveTranscript;
+
+  /// Raw mic sound level while listening (platform-dependent scale, roughly
+  /// dB), for a "something is being recorded" visual. 0 when not listening.
+  final double micLevel;
+
   const ConversationState({
     this.isBusy = false,
     this.isListening = false,
@@ -19,6 +26,8 @@ class ConversationState extends Equatable {
     this.emptyTryCount = 0,
     this.showTextInput = false,
     this.fallbackReason = FallbackReason.none,
+    this.liveTranscript = '',
+    this.micLevel = 0.0,
   });
 
   ConversationState copyWith({
@@ -29,6 +38,8 @@ class ConversationState extends Equatable {
     int? emptyTryCount,
     bool? showTextInput,
     FallbackReason? fallbackReason,
+    String? liveTranscript,
+    double? micLevel,
   }) {
     return ConversationState(
       isBusy: isBusy ?? this.isBusy,
@@ -38,6 +49,8 @@ class ConversationState extends Equatable {
       emptyTryCount: emptyTryCount ?? this.emptyTryCount,
       showTextInput: showTextInput ?? this.showTextInput,
       fallbackReason: fallbackReason ?? this.fallbackReason,
+      liveTranscript: liveTranscript ?? this.liveTranscript,
+      micLevel: micLevel ?? this.micLevel,
     );
   }
 
@@ -50,5 +63,7 @@ class ConversationState extends Equatable {
         emptyTryCount,
         showTextInput,
         fallbackReason,
+        liveTranscript,
+        micLevel,
       ];
 }

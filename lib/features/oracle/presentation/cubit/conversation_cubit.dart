@@ -43,13 +43,31 @@ class ConversationCubit extends Cubit<ConversationState> {
       return;
     }
 
-    emit(state.copyWith(isBusy: true, isListening: true));
+    emit(state.copyWith(isBusy: true, isListening: true, liveTranscript: '', micLevel: 0.0));
     _stageCubit.setAnimationState(ChibiAnimationState.listening);
-    await _speechService.listen(onFinalResult: _handleFinalTranscript);
+    await _speechService.listen(
+      onFinalResult: _handleFinalTranscript,
+      onPartialResult: _handlePartialTranscript,
+      onSoundLevel: _handleSoundLevel,
+    );
+  }
+
+  void _handlePartialTranscript(String text) {
+    if (!state.isListening) return;
+    emit(state.copyWith(liveTranscript: text));
+  }
+
+  void _handleSoundLevel(double level) {
+    if (!state.isListening) return;
+    // Raw level is a platform-dependent, roughly-dB scale (commonly ~-2 to
+    // ~10) — normalized here purely for a decorative equalizer, not measured
+    // for accuracy.
+    final normalized = ((level + 2) / 12).clamp(0.0, 1.0);
+    emit(state.copyWith(micLevel: normalized));
   }
 
   Future<void> _handleFinalTranscript(String text) async {
-    emit(state.copyWith(isListening: false, lastTranscript: text));
+    emit(state.copyWith(isListening: false, lastTranscript: text, liveTranscript: '', micLevel: 0.0));
 
     if (text.trim().isEmpty) {
       final tries = state.emptyTryCount + 1;

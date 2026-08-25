@@ -145,6 +145,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 return _MicButton(
                   isListening: state.isListening,
                   isBusy: state.isBusy,
+                  liveTranscript: state.liveTranscript,
+                  micLevel: state.micLevel,
                   onTap: () => context.read<ConversationCubit>().startListening(),
                 );
               },
@@ -180,9 +182,17 @@ class _ResponseCard extends StatelessWidget {
 class _MicButton extends StatelessWidget {
   final bool isListening;
   final bool isBusy;
+  final String liveTranscript;
+  final double micLevel;
   final VoidCallback onTap;
 
-  const _MicButton({required this.isListening, required this.isBusy, required this.onTap});
+  const _MicButton({
+    required this.isListening,
+    required this.isBusy,
+    required this.liveTranscript,
+    required this.micLevel,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -190,14 +200,25 @@ class _MicButton extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (isListening)
+          if (isListening) ...[
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
               child: Text(
-                'Listening…',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13),
+                liveTranscript.isEmpty ? 'Listening…' : liveTranscript,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: liveTranscript.isEmpty ? 0.6 : 1.0),
+                  fontSize: 14,
+                  fontStyle: liveTranscript.isEmpty ? FontStyle.italic : FontStyle.normal,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+            const SizedBox(height: 6),
+            _Equalizer(level: micLevel),
+            const SizedBox(height: 10),
+          ],
           // Mic-glow overlay per MVP-02: listening feedback is UI-only, not a
           // dedicated Rive pose.
           AnimatedContainer(
@@ -227,6 +248,44 @@ class _MicButton extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Simple "something is being recorded" indicator, driven by raw mic sound
+/// level (see SpeechService.listen's onSoundLevel) — gives instant feedback
+/// the mic is live even before speech_to_text has recognized any words yet,
+/// complementing the live-caption text above it.
+class _Equalizer extends StatelessWidget {
+  final double level; // normalized 0..1
+
+  const _Equalizer({required this.level});
+
+  static const _barMultipliers = [0.5, 0.85, 1.0, 0.7, 0.45];
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 24,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final multiplier in _barMultipliers)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOut,
+                width: 4,
+                height: 4 + (20 * level * multiplier).clamp(0.0, 20.0),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -46,8 +46,16 @@ class SpeechService {
 
   /// Starts one listening turn. [onFinalResult] fires once, with the final
   /// transcript (empty string if the recognizer heard nothing) — the pause
-  /// that ends the turn is speech_to_text's own pauseFor detection.
-  Future<void> listen({required void Function(String text) onFinalResult}) async {
+  /// that ends the turn is speech_to_text's own pauseFor detection (3s of
+  /// silence auto-finalizes, with a 20s hard cap either way).
+  /// [onPartialResult] fires repeatedly while listening, for live captions.
+  /// [onSoundLevel] fires with a raw (platform-dependent, roughly-dB) level
+  /// while listening, for a "something is being recorded" visual.
+  Future<void> listen({
+    required void Function(String text) onFinalResult,
+    void Function(String text)? onPartialResult,
+    void Function(double level)? onSoundLevel,
+  }) async {
     if (!_isAvailable) {
       onFinalResult('');
       return;
@@ -56,8 +64,11 @@ class SpeechService {
       onResult: (result) {
         if (result.finalResult) {
           onFinalResult(result.recognizedWords.trim());
+        } else {
+          onPartialResult?.call(result.recognizedWords.trim());
         }
       },
+      onSoundLevelChange: onSoundLevel,
       listenOptions: SpeechListenOptions(
         localeId: _selectedLocaleId,
         listenFor: const Duration(seconds: 20),
