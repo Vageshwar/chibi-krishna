@@ -8,6 +8,7 @@ import 'features/oracle/data/tts_service.dart';
 import 'features/oracle/presentation/cubit/conversation_cubit.dart';
 import 'features/oracle/presentation/cubit/conversation_state.dart';
 import 'features/stage/presentation/cubit/stage_cubit.dart';
+import 'features/stage/presentation/cubit/stage_state.dart';
 import 'features/stage/presentation/widgets/chibi_stage_view.dart';
 
 void main() async {
@@ -83,8 +84,30 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+// Splash choreography: matches ChibiStageView's own 900ms bottom-to-top
+// entrance, then holds a wave-hi greeting before handing off to the
+// interactive stage — kept as timers (not a state machine) since it's a
+// fixed one-time sequence, not something the rest of the app reacts to.
+const _splashGreetingDelay = Duration(milliseconds: 1000);
+const _splashDismissDelay = Duration(milliseconds: 2700);
+
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _textController = TextEditingController();
+  bool _showSplash = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(_splashGreetingDelay, () {
+      if (!mounted) return;
+      context.read<StageCubit>().setAnimationState(ChibiAnimationState.greeting);
+    });
+    Future.delayed(_splashDismissDelay, () {
+      if (!mounted) return;
+      setState(() => _showSplash = false);
+      context.read<StageCubit>().setAnimationState(ChibiAnimationState.idle);
+    });
+  }
 
   @override
   void dispose() {
@@ -152,7 +175,52 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ),
+
+          // Splash: welcome text over Krishna's bottom-to-top entrance +
+          // wave-hi greeting (see ChibiStageView / _HomeScreenState.initState).
+          // Absorbs taps while shown so the mic can't be triggered mid-intro.
+          Positioned.fill(
+            child: AbsorbPointer(
+              absorbing: _showSplash,
+              child: AnimatedOpacity(
+                opacity: _showSplash ? 1 : 0,
+                duration: const Duration(milliseconds: 500),
+                child: const _WelcomeOverlay(),
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _WelcomeOverlay extends StatelessWidget {
+  const _WelcomeOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: const Alignment(0, -0.55),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161824).withValues(alpha: 0.75),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: const Text(
+            'Welcome to\nChibi Krishna AI',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFFFFD700),
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
       ),
     );
   }
