@@ -2,7 +2,23 @@
 
 **GitHub issues:** [#5](https://github.com/Vageshwar/chibi-krishna/issues/5) (Rive stage), [#8](https://github.com/Vageshwar/chibi-krishna/issues/8) (mic capture), [#9](https://github.com/Vageshwar/chibi-krishna/issues/9) (quote engine), [#10](https://github.com/Vageshwar/chibi-krishna/issues/10) (TTS + mouth-flap), [#11](https://github.com/Vageshwar/chibi-krishna/issues/11) (orchestrator) — all in the **MVP — Alive Krishna, No AI Yet** milestone.
 **Branch:** `mvp-02-rive-mic-loop`
-**Status:** Implemented and verified running on Edge (web), **character now actually renders**, awaiting review
+**Status:** Implemented and verified running on Edge (web) — **character renders and now reacts to app state via its real Data Binding contract**, awaiting review
+
+## Update: real Data Binding integration (supersedes the pose/jawOpen/blessBurst plan below)
+
+The user found a third-party doc (`docs/krishna_rive_integration_summary.md`) describing this asset's actual structure: it's the **[KrishnaJI marketplace asset](https://rive.app/marketplace/27686-52286-krishnaji/)** (creator `ar.akash`, **CC BY 4.0** — attribution required in-app, not yet added), and it uses Rive **Data Binding** (a ViewModel), not legacy state-machine inputs — which is exactly why `controller.stateMachine.inputs` came back empty earlier. That wasn't an unrigged shell; it was the wrong API for how this file is built.
+
+That doc's *data* (enum names/values) was verified **100% accurate** by actually loading the file and mutating every value at runtime — including the `Thniking` typo, which is real, not a doc error. Its *code sample*, however, was written against the old `rive: 0.13.x` API mixed with a stubbed-out, never-implemented Data Binding fallback, so it wasn't usable as-is; the real implementation in `chibi_stage_view.dart` was built and verified fresh against the actual `rive: 0.14.11` API.
+
+**Real contract** (full detail: `docs/requirements/assets_v3.md` §4a): ViewModel `Instance` on state machine `KrishnaJI_SM`, three enum properties — `poses` (7 values incl. `talk_visemes`, a self-contained talking animation), `emotion` (14 values), `eye` (3 values). Bind via `controller.dataBind(rive.DataBind.auto())`, then `vmi.enumerator('poses')` etc. — values are **Strings**, not indices.
+
+Verified live: loaded the file, printed the real `file.enums`, bound the ViewModel, and ran an automated sequence setting all three properties through multiple values with readback checks — every set succeeded, zero render errors, confirmed stable. `ChibiStageView` now maps all 5 `ChibiAnimationState` values to real `poses`/`emotion`/`eye` combinations (idle/listening/thinking/speaking wired for MVP; blessing wired too, though not exercised until the V1 milestone). The separate `Confetti` artboard (a `celebrating 2` animation) is identified but not yet wired to anything — natural fit for the blessing state later.
+
+**Not yet done:** CC BY attribution credit in the app (About screen or similar) — should land before any public/store build, not blocking further dev work.
+
+---
+
+## Original plan (historical — kept for context on how the MVP loop itself was built)
 
 ## What changed
 

@@ -5,12 +5,21 @@ import 'package:rive/rive.dart' as rive;
 import '../cubit/stage_cubit.dart';
 import '../cubit/stage_state.dart';
 
-/// Pose contract for the Rive state machine (see docs/requirements/assets_v3.md):
-/// input "pose" (number) 0=idle 1=listening 2=thinking 3=speaking 4=blessing,
-/// input "jawOpen" (number 0-1), trigger "blessBurst" fired on entering blessing.
-/// If the loaded .riv doesn't have a matching input, that input is simply not
-/// driven; if the artboard has no state machine at all, the placeholder
-/// background shows instead. Check debug console on run for what was found.
+/// This character's .riv (assets/rive/chibi_krishna.riv) uses Rive **Data
+/// Binding**, not legacy state-machine number/trigger inputs — the artboard
+/// ("krishna_ai_teacher_master", state machine "KrishnaJI_SM") has a
+/// ViewModel with three enum properties, verified live against the real
+/// asset (see docs/krishna_rive_integration_summary.md for the source of
+/// these values, and progress/ for how they were verified):
+///   - poses:   Yesss | idle_lookaround | is_waving | talk_visemes |
+///              is_Denial | is_Acceptance | Idle
+///   - emotion: Exhalation | Thniking (sic, typo baked into the .riv) |
+///              Happy01 | Happy02 | Happy03 | Sad | Opps01 | Opps02 |
+///              Neutral01 | Neutral02 | Aaaaah | Odd | Crying | Oh No
+///   - eye:     close | open_big | open_small
+/// `poses: talk_visemes` is itself a self-contained talking animation, so
+/// unlike a number-driven jawOpen rig, we only need to switch the enum once
+/// per app-state change, not push a value every frame.
 class ChibiStageView extends StatefulWidget {
   const ChibiStageView({super.key});
 
@@ -20,13 +29,13 @@ class ChibiStageView extends StatefulWidget {
 
 class _ChibiStageViewState extends State<ChibiStageView> {
   rive.RiveWidgetController? _controller;
-  rive.NumberInput? _poseInput;
-  rive.NumberInput? _jawOpenInput;
-  rive.TriggerInput? _blessBurstInput;
+  rive.ViewModelInstanceEnum? _posesInput;
+  rive.ViewModelInstanceEnum? _emotionInput;
+  rive.ViewModelInstanceEnum? _eyeInput;
   ChibiAnimationState? _lastAppliedPose;
 
-  // Same defensive guard as before, kept in case a *different* future .riv
-  // trips a new incompatibility — costs nothing when rendering is healthy.
+  // Defensive guard kept from before, in case a future file revision trips a
+  // rendering incompatibility — costs nothing while rendering is healthy.
   bool _renderBroken = false;
   FlutterExceptionHandler? _previousOnError;
 
@@ -72,56 +81,64 @@ class _ChibiStageViewState extends State<ChibiStageView> {
         debugPrint('Rive: no default artboard in this file.');
         return;
       }
-
       if (artboard.stateMachineCount() == 0) {
-        debugPrint('Rive: artboard "${artboard.name}" has no state machine — nothing to drive yet.');
+        debugPrint('Rive: artboard "${artboard.name}" has no state machine.');
         return;
       }
 
       final controller = rive.RiveWidgetController(file);
-      for (final input in controller.stateMachine.inputs) {
-        final name = input.name.toLowerCase();
-        if (name == 'pose' && input is rive.NumberInput) _poseInput = input;
-        if (name == 'jawopen' && input is rive.NumberInput) _jawOpenInput = input;
-        if (name == 'blessburst' && input is rive.TriggerInput) _blessBurstInput = input;
-      }
+      final vmi = controller.dataBind(rive.DataBind.auto());
+      _posesInput = vmi.enumerator('poses');
+      _emotionInput = vmi.enumerator('emotion');
+      _eyeInput = vmi.enumerator('eye');
+
       debugPrint(
-        'Rive: artboard "${artboard.name}", state machine "${controller.stateMachine.name}" found. '
-        'pose input: ${_poseInput != null}, jawOpen input: ${_jawOpenInput != null}, '
-        'blessBurst input: ${_blessBurstInput != null}. '
-        'Inputs present: ${controller.stateMachine.inputs.map((i) => i.name).join(', ')}',
+        'Rive: bound ViewModel instance "${vmi.name}" on "${artboard.name}". '
+        'poses: ${_posesInput != null}, emotion: ${_emotionInput != null}, eye: ${_eyeInput != null}',
       );
 
       if (!mounted) return;
       setState(() => _controller = controller);
     } catch (e, st) {
-      debugPrint('Rive: failed to load assets/rive/chibi_krishna.riv: $e\n$st');
-    }
-  }
-
-  double _poseNumber(ChibiAnimationState s) {
-    switch (s) {
-      case ChibiAnimationState.idle:
-        return 0;
-      case ChibiAnimationState.listening:
-        return 1;
-      case ChibiAnimationState.thinking:
-        return 2;
-      case ChibiAnimationState.speaking:
-        return 3;
-      case ChibiAnimationState.blessing:
-        return 4;
+      debugPrint('Rive: failed to load/bind assets/rive/chibi_krishna.riv: $e\n$st');
     }
   }
 
   void _applyState(StageState state) {
     if (_controller == null) return;
-    _poseInput?.value = _poseNumber(state.animationState);
-    _jawOpenInput?.value = state.jawOpen;
-    if (state.animationState == ChibiAnimationState.blessing && _lastAppliedPose != ChibiAnimationState.blessing) {
-      _blessBurstInput?.fire();
-    }
+    // poses/emotion/eye are discrete enum states, not per-frame values, so
+    // only re-apply when the app's pose actually changes (StageState also
+    // emits on every jawOpen tick, which this rig doesn't use).
+    if (_lastAppliedPose == state.animationState) return;
     _lastAppliedPose = state.animationState;
+
+    switch (state.animationState) {
+      case ChibiAnimationState.idle:
+        _posesInput?.value = 'Idle';
+        _emotionInput?.value = 'Happy01';
+        _eyeInput?.value = 'open_big';
+        break;
+      case ChibiAnimationState.listening:
+        _posesInput?.value = 'idle_lookaround';
+        _emotionInput?.value = 'Happy01';
+        _eyeInput?.value = 'open_big';
+        break;
+      case ChibiAnimationState.thinking:
+        _posesInput?.value = 'Idle';
+        _emotionInput?.value = 'Thniking';
+        _eyeInput?.value = 'open_small';
+        break;
+      case ChibiAnimationState.speaking:
+        _posesInput?.value = 'talk_visemes';
+        _emotionInput?.value = 'Happy01';
+        _eyeInput?.value = 'open_big';
+        break;
+      case ChibiAnimationState.blessing:
+        _posesInput?.value = 'Yesss';
+        _emotionInput?.value = 'Happy03';
+        _eyeInput?.value = 'open_big';
+        break;
+    }
   }
 
   @override
