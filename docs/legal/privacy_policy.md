@@ -4,10 +4,7 @@
 <https://vageshwar.github.io/chibi-krishna/legal/privacy-policy.html> once this is merged into
 `feature/sprint-1-foundation` (GitHub Pages is configured to serve `/docs` from that branch). This
 `.md` file is the source-of-truth draft — **edit this file first, then port changes into the `.html`
-version**, they're not auto-synced. Contact email is currently the placeholder
-`privacy@vageshwar.dev` — swap for a real inbox (or a subdomain off `vageshwar.dev`, per the user's
-stated future plan) whenever that's ready; not launch-blocking, just needs to actually receive mail
-by the time this ships. Re-check this document against the code any time a new data-touching
+version**, they're not auto-synced. Contact email is `vageshwar.dev@gmail.com`. Re-check this document against the code any time a new data-touching
 feature ships (Gemini/FF-01, Firebase Analytics/FF-09, notifications/FF-08, referral/FF-07 are all
 V1 additions not in the app yet, and each will need a line added here when they land) — don't let
 this drift the way `PRD_v2.md` did.
@@ -101,4 +98,4 @@ change.
 
 ## Contact
 
-Questions about this policy: privacy@vageshwar.dev
+Questions about this policy: vageshwar.dev@gmail.com
