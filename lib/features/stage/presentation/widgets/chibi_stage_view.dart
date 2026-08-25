@@ -1,9 +1,37 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/foundation.dart' show FlutterExceptionHandler;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:rive/rive.dart' as rive;
 import '../cubit/stage_cubit.dart';
 import '../cubit/stage_state.dart';
+
+/// One tap-to-react combo. Deliberately warm/curious, not negative — a
+/// friendly poke shouldn't get a "Crying" or "Oh No" reaction back. Kept
+/// subtle (per PRD: "calm nature backdrop... soothing, not slapstick"),
+/// distinct from Talking Tom's poke-belly gimmick this project explicitly
+/// ruled out — this is one gentle flourish, not a mash-for-giggles loop.
+class _TapReaction {
+  final String pose;
+  final String emotion;
+  final String eye;
+  const _TapReaction(this.pose, this.emotion, this.eye);
+}
+
+const _tapReactions = [
+  _TapReaction('Yesss', 'Happy02', 'open_big'),
+  _TapReaction('is_waving', 'Happy01', 'open_big'),
+  _TapReaction('is_Acceptance', 'Happy01', 'open_big'),
+  _TapReaction('Idle', 'Odd', 'open_small'),
+  _TapReaction('Idle', 'Neutral02', 'open_big'),
+  _TapReaction('is_Denial', 'Odd', 'open_small'),
+  _TapReaction('Idle', 'Exhalation', 'open_small'),
+  _TapReaction('Idle', 'Happy03', 'open_big'),
+  _TapReaction('Idle', 'Opps01', 'open_big'),
+  _TapReaction('Yesss', 'Happy03', 'open_big'),
+];
 
 /// This character's .riv (assets/rive/chibi_krishna.riv) uses Rive **Data
 /// Binding**, not legacy state-machine number/trigger inputs — the artboard
@@ -33,6 +61,10 @@ class _ChibiStageViewState extends State<ChibiStageView> {
   rive.ViewModelInstanceEnum? _emotionInput;
   rive.ViewModelInstanceEnum? _eyeInput;
   ChibiAnimationState? _lastAppliedPose;
+
+  final Random _random = Random();
+  Timer? _reactionTimer;
+  bool _isReacting = false;
 
   // Defensive guard kept from before, in case a future file revision trips a
   // rendering incompatibility — costs nothing while rendering is healthy.
@@ -111,6 +143,9 @@ class _ChibiStageViewState extends State<ChibiStageView> {
     // emits on every jawOpen tick, which this rig doesn't use).
     if (_lastAppliedPose == state.animationState) return;
     _lastAppliedPose = state.animationState;
+    // Real conversation state always wins over a lingering tap-reaction.
+    _reactionTimer?.cancel();
+    _isReacting = false;
 
     switch (state.animationState) {
       case ChibiAnimationState.idle:
@@ -141,6 +176,31 @@ class _ChibiStageViewState extends State<ChibiStageView> {
     }
   }
 
+  /// Tap-to-react: only while genuinely idle (not mid-conversation), a
+  /// random warm reaction plays, then reverts — unless the conversation
+  /// moved on in the meantime, in which case _applyState already took over.
+  void _handleTap() {
+    if (_controller == null || _renderBroken || _isReacting) return;
+    final isIdle = _lastAppliedPose == null || _lastAppliedPose == ChibiAnimationState.idle;
+    if (!isIdle) return;
+
+    final reaction = _tapReactions[_random.nextInt(_tapReactions.length)];
+    _posesInput?.value = reaction.pose;
+    _emotionInput?.value = reaction.emotion;
+    _eyeInput?.value = reaction.eye;
+    _isReacting = true;
+
+    _reactionTimer?.cancel();
+    _reactionTimer = Timer(const Duration(milliseconds: 2000), () {
+      _isReacting = false;
+      final stillIdle = _lastAppliedPose == null || _lastAppliedPose == ChibiAnimationState.idle;
+      if (!stillIdle) return; // conversation moved on — don't stomp on it
+      _posesInput?.value = 'Idle';
+      _emotionInput?.value = 'Happy01';
+      _eyeInput?.value = 'open_big';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final showRive = _controller != null && !_renderBroken;
@@ -155,7 +215,11 @@ class _ChibiStageViewState extends State<ChibiStageView> {
           ),
         ),
         child: showRive
-            ? rive.RiveWidget(controller: _controller!, fit: rive.Fit.contain)
+            ? GestureDetector(
+                onTap: _handleTap,
+                behavior: HitTestBehavior.opaque,
+                child: rive.RiveWidget(controller: _controller!, fit: rive.Fit.contain),
+              )
             : const SizedBox.expand(),
       ),
     );
@@ -164,6 +228,7 @@ class _ChibiStageViewState extends State<ChibiStageView> {
   @override
   void dispose() {
     FlutterError.onError = _previousOnError;
+    _reactionTimer?.cancel();
     _controller?.dispose();
     super.dispose();
   }
