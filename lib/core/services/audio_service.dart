@@ -10,7 +10,7 @@ class BackgroundAudioService {
   Future<void> initialize() async {
     if (_isInitialized) return;
     try {
-      await _player.setAsset('assets/audio/bg_flute_loop.ogg');
+      await _player.setAsset('assets/audio/bg_flute_loop.mp3');
       await _player.setLoopMode(LoopMode.one);
       await _player.setVolume(normalVolume);
       _player.play();
