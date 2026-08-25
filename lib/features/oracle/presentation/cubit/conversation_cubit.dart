@@ -105,10 +105,10 @@ class ConversationCubit extends Cubit<ConversationState> {
     final responseText = _quoteRepository.textFor(quote, isHindi: isHindi);
     emit(state.copyWith(lastResponseText: responseText));
 
-    _stageCubit.setAnimationState(ChibiAnimationState.speaking);
     await _ttsService.speak(
       text: responseText,
       isHindi: isHindi,
+      onStart: () => _stageCubit.setAnimationState(ChibiAnimationState.speaking),
       onJawOpen: _stageCubit.updateLipSync,
       onDone: () {
         _stageCubit.setAnimationState(ChibiAnimationState.idle);

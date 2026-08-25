@@ -57,12 +57,13 @@ class TtsService {
   Future<void> speak({
     required String text,
     required bool isHindi,
+    required VoidCallback onStart,
     required void Function(double jawOpen) onJawOpen,
     required VoidCallback onDone,
   }) async {
     // Rebinding each call is cheap and keeps this correct even if a future
     // caller ever passes call-specific closures instead of stable ones.
-    _bindHandlers(onJawOpen, onDone);
+    _bindHandlers(onStart, onJawOpen, onDone);
 
     await _tts.setLanguage(isHindi ? 'hi-IN' : 'en-IN');
     final preferredVoice = isHindi ? _hindiVoice : _englishVoice;
@@ -77,8 +78,11 @@ class TtsService {
     await _tts.speak(text);
   }
 
-  void _bindHandlers(void Function(double) onJawOpen, VoidCallback onDone) {
+  void _bindHandlers(VoidCallback onStart, void Function(double) onJawOpen, VoidCallback onDone) {
     _tts.setStartHandler(() {
+      // Fire onStart here, not before speak() is called — this is the first
+      // signal that audio is actually about to play, same as onJawOpen below.
+      onStart();
       _envelopeTimer?.cancel();
       _envelopeTimer = Timer.periodic(const Duration(milliseconds: 90), (_) {
         onJawOpen(0.2 + _random.nextDouble() * 0.7);
