@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-enum ChibiAnimationState { idle, listening, thinking, speaking, blessing }
+enum ChibiAnimationState { idle, listening, thinking, speaking, blessing, greeting }
 
 class StageState extends Equatable {
   final ChibiAnimationState animationState;

@@ -3,8 +3,8 @@ import 'package:just_audio/just_audio.dart';
 
 class BackgroundAudioService {
   final AudioPlayer _player = AudioPlayer();
-  static const double normalVolume = 0.60;
-  static const double duckedVolume = 0.12;
+  static const double normalVolume = 0.35;
+  static const double duckedVolume = 0.08;
   bool _isInitialized = false;
 
   Future<void> initialize() async {

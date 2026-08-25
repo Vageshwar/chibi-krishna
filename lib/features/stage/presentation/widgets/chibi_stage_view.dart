@@ -55,7 +55,7 @@ class ChibiStageView extends StatefulWidget {
   State<ChibiStageView> createState() => _ChibiStageViewState();
 }
 
-class _ChibiStageViewState extends State<ChibiStageView> {
+class _ChibiStageViewState extends State<ChibiStageView> with SingleTickerProviderStateMixin {
   rive.RiveWidgetController? _controller;
   rive.ViewModelInstanceEnum? _posesInput;
   rive.ViewModelInstanceEnum? _emotionInput;
@@ -70,6 +70,17 @@ class _ChibiStageViewState extends State<ChibiStageView> {
   // rendering incompatibility — costs nothing while rendering is healthy.
   bool _renderBroken = false;
   FlutterExceptionHandler? _previousOnError;
+
+  // One-time "rises into frame" entrance on cold start (splash moment) —
+  // plays once the rig is actually loaded, not before.
+  late final AnimationController _entranceController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+  late final Animation<Offset> _entranceOffset = Tween<Offset>(
+    begin: const Offset(0, 1),
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _entranceController, curve: Curves.easeOutCubic));
 
   @override
   void initState() {
@@ -131,6 +142,7 @@ class _ChibiStageViewState extends State<ChibiStageView> {
 
       if (!mounted) return;
       setState(() => _controller = controller);
+      _entranceController.forward();
     } catch (e, st) {
       debugPrint('Rive: failed to load/bind assets/rive/chibi_krishna.riv: $e\n$st');
     }
@@ -171,6 +183,11 @@ class _ChibiStageViewState extends State<ChibiStageView> {
       case ChibiAnimationState.blessing:
         _posesInput?.value = 'Yesss';
         _emotionInput?.value = 'Happy03';
+        _eyeInput?.value = 'open_big';
+        break;
+      case ChibiAnimationState.greeting:
+        _posesInput?.value = 'is_waving';
+        _emotionInput?.value = 'Happy02';
         _eyeInput?.value = 'open_big';
         break;
     }
@@ -215,10 +232,13 @@ class _ChibiStageViewState extends State<ChibiStageView> {
           ),
         ),
         child: showRive
-            ? GestureDetector(
-                onTap: _handleTap,
-                behavior: HitTestBehavior.opaque,
-                child: rive.RiveWidget(controller: _controller!, fit: rive.Fit.contain),
+            ? SlideTransition(
+                position: _entranceOffset,
+                child: GestureDetector(
+                  onTap: _handleTap,
+                  behavior: HitTestBehavior.opaque,
+                  child: rive.RiveWidget(controller: _controller!, fit: rive.Fit.contain),
+                ),
               )
             : const SizedBox.expand(),
       ),
@@ -229,6 +249,7 @@ class _ChibiStageViewState extends State<ChibiStageView> {
   void dispose() {
     FlutterError.onError = _previousOnError;
     _reactionTimer?.cancel();
+    _entranceController.dispose();
     _controller?.dispose();
     super.dispose();
   }
