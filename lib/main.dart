@@ -181,42 +181,53 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // Mic control + text fallback.
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 24,
-            child: BlocBuilder<ConversationCubit, ConversationState>(
-              builder: (context, state) {
-                if (state.showTextInput) {
-                  return _TextFallback(
-                    controller: _textController,
-                    reason: state.fallbackReason,
-                    onSubmit: (text) {
-                      context.read<ConversationCubit>().submitTypedText(text);
-                      _textController.clear();
-                    },
-                  );
-                }
-                return _MicButton(
-                  isListening: state.isListening,
-                  isBusy: state.isBusy,
-                  liveTranscript: state.liveTranscript,
-                  micLevel: state.micLevel,
-                  onTap: () => context.read<ConversationCubit>().startListening(),
-                );
-              },
-            ),
-          ),
-
-          // FF-06: adaptive banner, bottom chrome only — renders nothing on
-          // iOS or before an ad has loaded, so it's invisible during local
-          // iOS-simulator dev.
+          // Mic control + text fallback, stacked above the banner in a
+          // Column so the mic's position accounts for the banner's real
+          // (adaptive, device-dependent) height instead of a guessed fixed
+          // offset — that guess is exactly what let the banner sit on top
+          // of the mic button before. Collapses to just the mic's own
+          // spacing when no banner is showing (iOS, or before one loads).
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: Center(child: AdBannerBar(adService: widget.adService)),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: BlocBuilder<ConversationCubit, ConversationState>(
+                      builder: (context, state) {
+                        if (state.showTextInput) {
+                          return _TextFallback(
+                            controller: _textController,
+                            reason: state.fallbackReason,
+                            onSubmit: (text) {
+                              context.read<ConversationCubit>().submitTypedText(text);
+                              _textController.clear();
+                            },
+                          );
+                        }
+                        return _MicButton(
+                          isListening: state.isListening,
+                          isBusy: state.isBusy,
+                          liveTranscript: state.liveTranscript,
+                          micLevel: state.micLevel,
+                          onTap: () => context.read<ConversationCubit>().startListening(),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // FF-06: adaptive banner, bottom chrome only — renders
+                  // nothing on iOS or before an ad has loaded.
+                  AdBannerBar(adService: widget.adService),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
           ),
 
           // Splash: welcome text over Krishna's bottom-to-top entrance +
