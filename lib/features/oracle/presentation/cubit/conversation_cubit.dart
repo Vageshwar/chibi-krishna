@@ -30,6 +30,7 @@ class ConversationCubit extends Cubit<ConversationState> {
 
   Future<void> initialize() async {
     await _quoteRepository.load();
+    await _ttsService.initialize();
     final available = await _speechService.initialize();
     if (!available) {
       emit(state.copyWith(showTextInput: true, fallbackReason: FallbackReason.permissionDenied));
