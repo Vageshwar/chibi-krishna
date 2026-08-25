@@ -1,18 +1,23 @@
 # Privacy Policy — Chibi Krishna AI
 
-**DRAFT — not yet published.** Written to match the app's actual current behavior (MVP build,
-2026-08-25). Two placeholders need filling in before this can be hosted and linked from the Play
-listing: `[CONTACT EMAIL]` and `[EFFECTIVE DATE]`. Re-check this document against the code any time
-a new data-touching feature ships (Gemini/FF-01, Firebase Analytics/FF-09, notifications/FF-08,
-referral/FF-07 are all V1 additions not in the app yet, and each will need a line added here when
-they land) — don't let this drift the way `PRD_v2.md` did.
+**Published version: `privacy-policy.html` in this same folder**, live at
+<https://vageshwar.github.io/chibi-krishna/legal/privacy-policy.html> once this is merged into
+`feature/sprint-1-foundation` (GitHub Pages is configured to serve `/docs` from that branch). This
+`.md` file is the source-of-truth draft — **edit this file first, then port changes into the `.html`
+version**, they're not auto-synced. Contact email is currently the placeholder
+`privacy@vageshwar.dev` — swap for a real inbox (or a subdomain off `vageshwar.dev`, per the user's
+stated future plan) whenever that's ready; not launch-blocking, just needs to actually receive mail
+by the time this ships. Re-check this document against the code any time a new data-touching
+feature ships (Gemini/FF-01, Firebase Analytics/FF-09, notifications/FF-08, referral/FF-07 are all
+V1 additions not in the app yet, and each will need a line added here when they land) — don't let
+this drift the way `PRD_v2.md` did.
 
 ---
 
-**Effective date:** [EFFECTIVE DATE]
+**Effective date:** 25 August 2026
 
-Chibi Krishna AI ("the app," "we," "us") is developed by [PUBLISHER / DEVELOPER NAME]. This policy
-explains what the app does and does not do with your data.
+Chibi Krishna AI ("the app," "we," "us") is developed by Vageshwar. This policy explains what the
+app does and does not do with your data.
 
 ## Quick summary
 
@@ -96,4 +101,4 @@ change.
 
 ## Contact
 
-Questions about this policy: [CONTACT EMAIL]
+Questions about this policy: privacy@vageshwar.dev
