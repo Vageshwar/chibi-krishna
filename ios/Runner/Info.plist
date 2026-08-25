@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Chibi Krishna listens to your spoken questions so Krishna can respond to you.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Chibi Krishna uses speech recognition to turn what you say into text for Krishna to respond to.</string>
 </dict>
 </plist>
