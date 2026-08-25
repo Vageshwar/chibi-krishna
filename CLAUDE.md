@@ -4,6 +4,7 @@ Solo-dev Android app: a full-screen 2D **Rive**-rigged chibi Krishna companion, 
 
 ## Before writing or deciding anything
 
+0. **If this is a fresh session (new machine, new environment, or picking up after a gap), read `docs/HANDOFF.md` first.** It's a point-in-time snapshot (open PRs, what's mid-flight, environment gotchas from whichever machine wrote it) — useful context, but treat it as a snapshot, not a standing rule like the items below.
 1. **Read `docs/Chibi_Krishna_AI_PRD_v3.md`** — the current build spec. `Chibi_Krishna_AI_PRD.md` (v1, 3D/Deepgram/Cartesia) and `_PRD_v2.md` are historical; do not design or code from them.
 2. **Check live GitHub state before assuming scope**: `gh issue list --state open --json number,title,milestone,labels` and `gh api repos/Vageshwar/chibi-krishna/milestones`. GitHub Issues/Milestones are the operational tracker. `docs/Chibi_Krishna_AI_GitHub_Issues_v3.md` is the rationale/detail bank behind them, not the live source of truth — and the v1/v2 issue docs are historical, same as the PRDs. If asked to add or change scope, reflect it in the live GitHub issues (via `gh`), not only in a doc.
 3. **Diff docs against actual code before trusting a doc's claim about current state.** This repo's docs and code have drifted before: PRD v2 and v3 both said "remove the Filament/SceneView 3D stub," but `lib/features/stage/presentation/widgets/chibi_stage_view.dart` and `pubspec.yaml` still had it as of the last check. Read the relevant files yourself.
