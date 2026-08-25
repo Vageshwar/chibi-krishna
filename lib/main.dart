@@ -143,19 +143,40 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _showSupportSheet(BuildContext context) async {
+  Future<bool> _showSupportSheet(
+    BuildContext context, {
+    required bool isVoluntary,
+  }) async {
     final watchedAd = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: const Color(0xFF161824),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => SupportSheet(adService: widget.adService),
+      builder: (_) =>
+          SupportSheet(adService: widget.adService, isVoluntary: isVoluntary),
     );
+    return watchedAd == true;
+  }
+
+  // Triggered by ConversationCubit when the daily voice quota runs out —
+  // the sheet's outcome decides whether the pending question gets answered
+  // normally or downgraded (see ConversationCubit.resolveSupportPrompt).
+  Future<void> _handleQuotaSupportPrompt(BuildContext context) async {
+    final watchedAd = await _showSupportSheet(context, isVoluntary: false);
     if (!context.mounted) return;
     context.read<ConversationCubit>().resolveSupportPrompt(
-      watchedAd: watchedAd == true,
+      watchedAd: watchedAd,
     );
+  }
+
+  // Triggered by the top-right support button — a voluntary "Dakshina" entry
+  // point (PRD v3 §7), not gated on quota. No pending question to resolve;
+  // just grants the reward turns directly if the ad was watched.
+  Future<void> _handleVoluntarySupport(BuildContext context) async {
+    final watchedAd = await _showSupportSheet(context, isVoluntary: true);
+    if (!context.mounted || !watchedAd) return;
+    context.read<QuotaCubit>().grantRewardTurns();
   }
 
   @override
@@ -163,7 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return BlocListener<ConversationCubit, ConversationState>(
       listenWhen: (prev, curr) =>
           curr.needsSupportPrompt && !prev.needsSupportPrompt,
-      listener: (context, state) => _showSupportSheet(context),
+      listener: (context, state) => _handleQuotaSupportPrompt(context),
       child: _buildScaffold(context),
     );
   }
@@ -187,7 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Positioned(
               top: 0,
               left: 16,
-              right: 16,
+              right: 64, // clears the support button in the top-right corner
               child: SafeArea(
                 bottom: false,
                 child: Padding(
@@ -251,6 +272,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     AdBannerBar(adService: widget.adService),
                     const SizedBox(height: 8),
                   ],
+                ),
+              ),
+            ),
+
+            // Voluntary support ("Dakshina") button, PRD v3 §7 — same
+            // Support sheet as the quota-exhausted prompt, just opened by
+            // choice instead of being forced. Top-right, clear of the
+            // response bubble which sits top-left/center.
+            Positioned(
+              top: 0,
+              right: 16,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: _SupportButton(
+                    onTap: () => _handleVoluntarySupport(context),
+                  ),
                 ),
               ),
             ),
@@ -359,6 +398,30 @@ class _ResponseBubbleState extends State<_ResponseBubble> {
       opacity: _visible ? 1 : 0,
       duration: _fadeDuration,
       child: _ResponseCard(text: widget.text!),
+    );
+  }
+}
+
+/// Voluntary "Dakshina" support entry point (PRD v3 §7) — top-right, opens
+/// the same Support sheet as the quota-exhausted prompt. Publisher-voiced
+/// throughout; never framed as Krishna asking for anything (locked decision).
+class _SupportButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _SupportButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF161824).withValues(alpha: 0.75),
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: const Padding(
+          padding: EdgeInsets.all(10),
+          child: Icon(Icons.attach_money, color: Color(0xFFFFD700), size: 22),
+        ),
+      ),
     );
   }
 }
