@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chibi_krishna/main.dart';
 import 'package:chibi_krishna/core/services/audio_service.dart';
@@ -8,6 +9,8 @@ void main() {
     final audioService = BackgroundAudioService();
     final adService = AdService();
     await tester.pumpWidget(ChibiKrishnaApp(audioService: audioService, adService: adService));
-    expect(find.text('Chibi Krishna AI'), findsOneWidget);
+    // No app bar anymore (simplified home layout) — the mic button is the
+    // stable thing to assert on instead.
+    expect(find.byIcon(Icons.mic_none), findsOneWidget);
   });
 }
