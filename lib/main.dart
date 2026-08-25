@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/services/audio_service.dart';
+import 'features/monetization/data/ad_service.dart';
+import 'features/monetization/data/quota_repository.dart';
+import 'features/monetization/presentation/cubit/quota_cubit.dart';
+import 'features/monetization/presentation/widgets/ad_banner_bar.dart';
+import 'features/monetization/presentation/widgets/support_sheet.dart';
 import 'features/oracle/data/quote_repository.dart';
 import 'features/oracle/data/speech_service.dart';
 import 'features/oracle/data/tts_service.dart';
@@ -23,13 +28,17 @@ void main() async {
   final audioService = BackgroundAudioService();
   await audioService.initialize();
 
-  runApp(ChibiKrishnaApp(audioService: audioService));
+  final adService = AdService();
+  await adService.initialize();
+
+  runApp(ChibiKrishnaApp(audioService: audioService, adService: adService));
 }
 
 class ChibiKrishnaApp extends StatelessWidget {
   final BackgroundAudioService audioService;
+  final AdService adService;
 
-  const ChibiKrishnaApp({super.key, required this.audioService});
+  const ChibiKrishnaApp({super.key, required this.audioService, required this.adService});
 
   @override
   Widget build(BuildContext context) {
@@ -38,12 +47,16 @@ class ChibiKrishnaApp extends StatelessWidget {
         BlocProvider<StageCubit>(
           create: (context) => StageCubit(),
         ),
+        BlocProvider<QuotaCubit>(
+          create: (context) => QuotaCubit(quotaRepository: QuotaRepository()),
+        ),
         BlocProvider<ConversationCubit>(
           create: (context) => ConversationCubit(
             stageCubit: context.read<StageCubit>(),
             speechService: SpeechService(),
             ttsService: TtsService(),
             quoteRepository: QuoteRepository(),
+            quotaCubit: context.read<QuotaCubit>(),
           )..initialize(),
         ),
       ],
@@ -69,7 +82,7 @@ class ChibiKrishnaApp extends StatelessWidget {
             ),
           ),
         ),
-        home: HomeScreen(audioService: audioService),
+        home: HomeScreen(audioService: audioService, adService: adService),
       ),
     );
   }
@@ -77,8 +90,9 @@ class ChibiKrishnaApp extends StatelessWidget {
 
 class HomeScreen extends StatefulWidget {
   final BackgroundAudioService audioService;
+  final AdService adService;
 
-  const HomeScreen({super.key, required this.audioService});
+  const HomeScreen({super.key, required this.audioService, required this.adService});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -116,8 +130,27 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  Future<void> _showSupportSheet(BuildContext context) async {
+    final watchedAd = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: const Color(0xFF161824),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SupportSheet(adService: widget.adService),
+    );
+    if (!context.mounted) return;
+    context.read<ConversationCubit>().resolveSupportPrompt(watchedAd: watchedAd == true);
+  }
+
   @override
   Widget build(BuildContext context) {
+    return BlocListener<ConversationCubit, ConversationState>(
+      listenWhen: (prev, curr) => curr.needsSupportPrompt && !prev.needsSupportPrompt,
+      listener: (context, state) => _showSupportSheet(context),
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Row(
@@ -174,6 +207,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
+          ),
+
+          // FF-06: adaptive banner, bottom chrome only — renders nothing on
+          // iOS or before an ad has loaded, so it's invisible during local
+          // iOS-simulator dev.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Center(child: AdBannerBar(adService: widget.adService)),
           ),
 
           // Splash: welcome text over Krishna's bottom-to-top entrance +

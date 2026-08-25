@@ -11,6 +11,11 @@ class ConversationState extends Equatable {
   final bool showTextInput;
   final FallbackReason fallbackReason;
 
+  /// True when the daily voice quota (FF-04) just ran out and the UI should
+  /// show the Support sheet (FF-06). The pending question is held internally
+  /// by ConversationCubit, not in state — resolveSupportPrompt() answers it.
+  final bool needsSupportPrompt;
+
   /// Live partial transcript while listening — cleared once the turn ends.
   final String liveTranscript;
 
@@ -28,6 +33,7 @@ class ConversationState extends Equatable {
     this.fallbackReason = FallbackReason.none,
     this.liveTranscript = '',
     this.micLevel = 0.0,
+    this.needsSupportPrompt = false,
   });
 
   ConversationState copyWith({
@@ -40,6 +46,7 @@ class ConversationState extends Equatable {
     FallbackReason? fallbackReason,
     String? liveTranscript,
     double? micLevel,
+    bool? needsSupportPrompt,
   }) {
     return ConversationState(
       isBusy: isBusy ?? this.isBusy,
@@ -51,6 +58,7 @@ class ConversationState extends Equatable {
       fallbackReason: fallbackReason ?? this.fallbackReason,
       liveTranscript: liveTranscript ?? this.liveTranscript,
       micLevel: micLevel ?? this.micLevel,
+      needsSupportPrompt: needsSupportPrompt ?? this.needsSupportPrompt,
     );
   }
 
@@ -65,5 +73,6 @@ class ConversationState extends Equatable {
         fallbackReason,
         liveTranscript,
         micLevel,
+        needsSupportPrompt,
       ];
 }
