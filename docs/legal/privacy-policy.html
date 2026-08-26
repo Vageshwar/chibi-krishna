@@ -92,7 +92,7 @@
 <body>
 <main>
   <h1>Privacy Policy</h1>
-  <p class="meta">Chibi Krishna AI &middot; Effective 25 August 2026</p>
+  <p class="meta">Chibi Krishna AI &middot; Effective 26 August 2026</p>
 
   <p>Chibi Krishna AI ("the app," "we," "us") is developed by Vageshwar. This policy explains what the app does and does not do with your data.</p>
 
@@ -100,6 +100,7 @@
     <ul>
       <li>No account, no sign-up, no name, no email, no phone number — the app doesn't ask for any of these.</li>
       <li>Your voice is processed by your device's own speech recognition to turn it into text; the app does not record, store, or transmit audio itself.</li>
+      <li>Your question's <strong>text</strong> (not audio) is sent to Google's Gemini AI model to generate the app's response — see "AI responses" below for exactly what is and isn't sent.</li>
       <li>The app shows ads (Google AdMob) and uses your device's advertising identifier for that.</li>
       <li>A small amount of usage data (how many questions you've asked today) is stored <strong>only on your device</strong> — never sent anywhere, gone if you uninstall the app.</li>
       <li>We do not sell your data. We do not have a server to store it on even if we wanted to.</li>
@@ -117,6 +118,15 @@
   </ul>
   <p>You can always deny microphone access; the app falls back to a text input box instead.</p>
 
+  <h3>AI responses (Google Gemini, via Firebase AI Logic)</h3>
+  <p>When you ask a question (by voice or typed text), the <strong>text</strong> of that question is sent to a Google Gemini AI model — using Firebase AI Logic, Google's own integration path for calling Gemini from an app, rather than a raw API key embedded in the app. Each question is sent on its own, without your prior questions attached, and without any account or device-identifying profile tied to you. What is sent:</p>
+  <ul>
+    <li>the text of your current question only,</li>
+    <li>a short fixed instruction set (persona, tone, safety rules) that doesn't vary per user and contains no personal data.</li>
+  </ul>
+  <p>What is <strong>not</strong> sent: your voice recording, your name, your location, your device's advertising identifier, or a history of your past questions. Google's Gemini API data-handling terms apply to this processing — see <a href="https://ai.google.dev/gemini-api/terms">ai.google.dev/gemini-api/terms</a>. Firebase App Check is used alongside this to confirm requests come from a genuine copy of the app (an anti-abuse measure); it does not identify you personally.</p>
+  <p>If the AI service is slow or unavailable, the app falls back to a small set of pre-written local quotes instead — no data is sent anywhere in that fallback path.</p>
+
   <h3>Advertising (Google AdMob)</h3>
   <p>The app shows a banner ad and, optionally, a rewarded video ad (to unlock a few extra questions for the day, or to voluntarily support the app). These are served by Google AdMob, which uses your device's advertising identifier (Android Advertising ID / iOS IDFA) to serve and measure ads, including personalized ads where you've consented. See Google's own privacy policy for how AdMob handles this data: <a href="https://policies.google.com/privacy">policies.google.com/privacy</a>. We do not receive or store your advertising identifier ourselves — it's handled directly between your device and Google.</p>
   <p>If you are in the EU, UK, or Switzerland, the app asks for your consent before showing personalized ads, via Google's User Messaging Platform. You can decline; you'll still see ads, just not personalized ones.</p>
@@ -130,7 +140,7 @@
   </ul>
 
   <h3>What we don't collect</h3>
-  <p>No account or login. No name, email, or phone number. No location. No contacts. No photos or files. No persistent profile of you as a user. No transcript of what you've said is stored beyond your current session. We don't have a backend server, so there's nowhere for this data to be sent even if the app wanted to send it.</p>
+  <p>No account or login. No name, email, or phone number. No location. No contacts. No photos or files. No persistent profile of you as a user. We don't run our own backend server, don't store your transcript beyond your current session ourselves, and don't attach any history of past questions when sending a new one to Google's Gemini API. Google's own terms govern how they handle that submitted text on their end — see "AI responses" above.</p>
 
   <h2>Children</h2>
   <p>Chibi Krishna AI is not designed for or directed at children, and is not part of Google Play's Families program. It's positioned for a general audience 13 and older (devotees, parents, and families), though a parent or guardian may of course choose to use it together with a child.</p>
@@ -144,7 +154,10 @@
   <p>Because we don't collect personal data or run a backend, there isn't a personal-data-deletion request process beyond the above — there's nothing on a server to delete.</p>
 
   <h2>Changes to this policy</h2>
-  <p>If what the app collects or does changes (for example, when Gemini-powered responses or analytics are added in a future update), this policy will be updated and the effective date above will change.</p>
+  <p>If what the app collects or does changes (for example, when analytics or notifications are added in a future update), this policy will be updated and the effective date above will change.</p>
+
+  <h2>Terms of Service</h2>
+  <p>See our <a href="terms-of-service.html">Terms of Service</a> for the rules governing your use of the app.</p>
 
   <h2>Contact</h2>
   <p>Questions about this policy: <a href="mailto:vageshwar.dev@gmail.com">vageshwar.dev@gmail.com</a></p>

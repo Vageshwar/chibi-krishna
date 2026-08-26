@@ -1,11 +1,17 @@
 import 'dart:async';
 
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/services/audio_service.dart';
+import 'core/services/gemini_service.dart';
+import 'features/about/presentation/widgets/about_screen.dart';
 import 'features/monetization/data/ad_service.dart';
+import 'features/monetization/data/consent_service.dart';
 import 'features/monetization/data/quota_repository.dart';
 import 'features/monetization/presentation/cubit/quota_cubit.dart';
 import 'features/monetization/presentation/widgets/ad_banner_bar.dart';
@@ -15,9 +21,11 @@ import 'features/oracle/data/speech_service.dart';
 import 'features/oracle/data/tts_service.dart';
 import 'features/oracle/presentation/cubit/conversation_cubit.dart';
 import 'features/oracle/presentation/cubit/conversation_state.dart';
+import 'features/safety/presentation/widgets/crisis_strip.dart';
 import 'features/stage/presentation/cubit/stage_cubit.dart';
 import 'features/stage/presentation/cubit/stage_state.dart';
 import 'features/stage/presentation/widgets/chibi_stage_view.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,11 +36,37 @@ void main() async {
     debugPrint('Dotenv init note: $e');
   }
 
+  // FF-01: not configured for iOS (local-dev-only target, CLAUDE.md) — this
+  // throws there, so GeminiService falls back to local quotes on iOS. Never
+  // blocks app boot on Android either if it somehow fails.
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    // No backend means no server-side rate limiting on Gemini calls — App
+    // Check is the only defense against an extracted/repackaged app hammering
+    // the API outside the client's own SQLite quota (#16). Debug provider
+    // needs its token registered in the Firebase console to pass once
+    // enforcement is on; Play Integrity needs release signing (#34) first.
+    await FirebaseAppCheck.instance.activate(
+      providerAndroid: kReleaseMode
+          ? const AndroidPlayIntegrityProvider()
+          : const AndroidDebugProvider(),
+    );
+  } catch (e) {
+    debugPrint('Firebase init note: $e');
+  }
+
   final audioService = BackgroundAudioService();
   await audioService.initialize();
 
+  // UMP consent gate — required before any AdMob request in the EEA/UK/CH
+  // (Google enforces this at the account level, not just a nicety). A no-op
+  // outside those regions. Only initialize ads if this comes back true.
+  final canRequestAds = await ConsentService().requestConsentAndCheck();
+
   final adService = AdService();
-  await adService.initialize();
+  if (canRequestAds) {
+    await adService.initialize();
+  }
 
   runApp(ChibiKrishnaApp(audioService: audioService, adService: adService));
 }
@@ -62,6 +96,7 @@ class ChibiKrishnaApp extends StatelessWidget {
             ttsService: TtsService(),
             quoteRepository: QuoteRepository(),
             quotaCubit: context.read<QuotaCubit>(),
+            geminiService: GeminiService(),
           )..initialize(),
         ),
       ],
@@ -205,19 +240,25 @@ class _HomeScreenState extends State<HomeScreen> {
             // few seconds after appearing rather than sitting on screen
             // indefinitely (see _ResponseBubble). SafeArea here because
             // there's no app bar anymore to clear the status bar for us.
-            Positioned(
-              top: 0,
-              left: 16,
-              right: 64, // clears the support button in the top-right corner
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: BlocBuilder<ConversationCubit, ConversationState>(
-                    buildWhen: (prev, curr) =>
-                        prev.lastResponseText != curr.lastResponseText,
-                    builder: (context, state) =>
-                        _ResponseBubble(text: state.lastResponseText),
+            // Shifts down (approximate, not measured) when the crisis strip
+            // is showing, so the two don't overlap.
+            BlocBuilder<ConversationCubit, ConversationState>(
+              buildWhen: (prev, curr) =>
+                  prev.showCrisisStrip != curr.showCrisisStrip,
+              builder: (context, crisisState) => Positioned(
+                top: crisisState.showCrisisStrip ? 44 : 0,
+                left: 64, // clears the About button in the top-left corner
+                right: 64, // clears the support button in the top-right corner
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: BlocBuilder<ConversationCubit, ConversationState>(
+                      buildWhen: (prev, curr) =>
+                          prev.lastResponseText != curr.lastResponseText,
+                      builder: (context, state) =>
+                          _ResponseBubble(text: state.lastResponseText),
+                    ),
                   ),
                 ),
               ),
@@ -254,14 +295,24 @@ class _HomeScreenState extends State<HomeScreen> {
                               },
                             );
                           }
-                          return _MicButton(
-                            isListening: state.isListening,
-                            isBusy: state.isBusy,
-                            liveTranscript: state.liveTranscript,
-                            micLevel: state.micLevel,
-                            onTap: () => context
-                                .read<ConversationCubit>()
-                                .startListening(),
+                          // Thinking status comes from StageCubit (already
+                          // set right before the Gemini call in
+                          // ConversationCubit._respond) rather than adding a
+                          // redundant flag to ConversationState.
+                          return BlocBuilder<StageCubit, StageState>(
+                            buildWhen: (prev, curr) =>
+                                prev.animationState != curr.animationState,
+                            builder: (context, stageState) => _MicButton(
+                              isListening: state.isListening,
+                              isBusy: state.isBusy,
+                              isThinking: stageState.animationState ==
+                                  ChibiAnimationState.thinking,
+                              liveTranscript: state.liveTranscript,
+                              micLevel: state.micLevel,
+                              onTap: () => context
+                                  .read<ConversationCubit>()
+                                  .startListening(),
+                            ),
                           );
                         },
                       ),
@@ -272,6 +323,26 @@ class _HomeScreenState extends State<HomeScreen> {
                     AdBannerBar(adService: widget.adService),
                     const SizedBox(height: 8),
                   ],
+                ),
+              ),
+            ),
+
+            // About entry point (#7/#27) — AI-avatar disclaimer, CC BY 4.0
+            // attribution for the Rive character, and the privacy policy
+            // link, all reachable in-app permanently (not just once-per-
+            // session in voice). Top-left, mirrors the support button.
+            Positioned(
+              top: 0,
+              left: 16,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: _AboutButton(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AboutScreen()),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -291,6 +362,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     onTap: () => _handleVoluntarySupport(context),
                   ),
                 ),
+              ),
+            ),
+
+            // FF-03: persistent crisis safety strip — never dismissible,
+            // stays up for the rest of the session once a crisis keyword
+            // hits (see ConversationCubit._respond / CrisisClassifier).
+            // Sits above the rest of the stage chrome but below the splash
+            // overlay so it never blocks app boot.
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: BlocBuilder<ConversationCubit, ConversationState>(
+                buildWhen: (prev, curr) =>
+                    prev.showCrisisStrip != curr.showCrisisStrip,
+                builder: (context, state) => state.showCrisisStrip
+                    ? const CrisisStrip()
+                    : const SizedBox.shrink(),
               ),
             ),
 
@@ -426,6 +515,28 @@ class _SupportButton extends StatelessWidget {
   }
 }
 
+/// About entry point (#7/#27) — top-left, mirrors [_SupportButton]'s style.
+class _AboutButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AboutButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF161824).withValues(alpha: 0.75),
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: const Padding(
+          padding: EdgeInsets.all(10),
+          child: Icon(Icons.info_outline, color: Color(0xFFFFD700), size: 22),
+        ),
+      ),
+    );
+  }
+}
+
 class _ResponseCard extends StatelessWidget {
   final String text;
   const _ResponseCard({required this.text});
@@ -450,6 +561,7 @@ class _ResponseCard extends StatelessWidget {
 class _MicButton extends StatelessWidget {
   final bool isListening;
   final bool isBusy;
+  final bool isThinking;
   final String liveTranscript;
   final double micLevel;
   final VoidCallback onTap;
@@ -457,6 +569,7 @@ class _MicButton extends StatelessWidget {
   const _MicButton({
     required this.isListening,
     required this.isBusy,
+    required this.isThinking,
     required this.liveTranscript,
     required this.micLevel,
     required this.onTap,
@@ -490,6 +603,22 @@ class _MicButton extends StatelessWidget {
             const SizedBox(height: 6),
             _Equalizer(level: micLevel),
             const SizedBox(height: 10),
+          ] else if (isThinking) ...[
+            // Covers the Gemini round-trip (up to the 8s timeout) — without
+            // this, that gap looked like the app had gone unresponsive.
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+              child: Text(
+                'Krishna is thinking…',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 16),
           ],
           // Mic-glow overlay per MVP-02: listening feedback is UI-only, not a
           // dedicated Rive pose.

@@ -20,7 +20,9 @@ class _AdBannerBarState extends State<AdBannerBar> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_requested && widget.adService.isSupported) {
+    // isInitialized gates this on the UMP consent flow (ConsentService) —
+    // AdService.initialize() may not have run yet this session at all.
+    if (!_requested && widget.adService.isSupported && widget.adService.isInitialized) {
       _requested = true;
       _loadBanner();
     }

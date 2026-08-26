@@ -23,6 +23,10 @@ class ConversationState extends Equatable {
   /// dB), for a "something is being recorded" visual. 0 when not listening.
   final double micLevel;
 
+  /// FF-03: set once a crisis-keyword hit fires and stays true for the rest
+  /// of the session — the strip must not auto-dismiss (CLAUDE.md, PRD §9).
+  final bool showCrisisStrip;
+
   const ConversationState({
     this.isBusy = false,
     this.isListening = false,
@@ -34,6 +38,7 @@ class ConversationState extends Equatable {
     this.liveTranscript = '',
     this.micLevel = 0.0,
     this.needsSupportPrompt = false,
+    this.showCrisisStrip = false,
   });
 
   ConversationState copyWith({
@@ -47,6 +52,7 @@ class ConversationState extends Equatable {
     String? liveTranscript,
     double? micLevel,
     bool? needsSupportPrompt,
+    bool? showCrisisStrip,
   }) {
     return ConversationState(
       isBusy: isBusy ?? this.isBusy,
@@ -59,6 +65,7 @@ class ConversationState extends Equatable {
       liveTranscript: liveTranscript ?? this.liveTranscript,
       micLevel: micLevel ?? this.micLevel,
       needsSupportPrompt: needsSupportPrompt ?? this.needsSupportPrompt,
+      showCrisisStrip: showCrisisStrip ?? this.showCrisisStrip,
     );
   }
 
@@ -74,5 +81,6 @@ class ConversationState extends Equatable {
         liveTranscript,
         micLevel,
         needsSupportPrompt,
+        showCrisisStrip,
       ];
 }

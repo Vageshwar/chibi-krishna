@@ -34,6 +34,12 @@ class AdService {
   bool _initialized = false;
   RewardedAd? _rewardedAd;
 
+  /// False until [initialize] has actually run — callers (AdBannerBar)
+  /// should not request an ad before this is true, since it may never be
+  /// called this session at all if the UMP consent gate (ConsentService)
+  /// says ad requests aren't allowed yet.
+  bool get isInitialized => _initialized;
+
   Future<void> initialize() async {
     if (!isSupported || _initialized) return;
     try {

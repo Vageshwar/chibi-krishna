@@ -1,0 +1,1 @@
+{"flutter":{"platforms":{"android":{"default":{"projectId":"chibi-krishna-ai","appId":"1:51027558725:android:c461ebd82186186f75be2c","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"chibi-krishna-ai","configurations":{"android":"1:51027558725:android:c461ebd82186186f75be2c","web":"1:51027558725:web:c74dc9cdb4b461fa75be2c"}}}}}}
