@@ -1,6 +1,8 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/services/gemini_service.dart';
 import '../../../monetization/presentation/cubit/quota_cubit.dart';
+import '../../../safety/data/crisis_classifier.dart';
 import '../../../stage/presentation/cubit/stage_cubit.dart';
 import '../../../stage/presentation/cubit/stage_state.dart';
 import '../../data/quote_repository.dart';
@@ -9,13 +11,12 @@ import '../../data/tts_service.dart';
 import 'conversation_state.dart';
 
 /// MVP-08 orchestrator: idle -> listening -> thinking -> speaking -> idle.
-/// No Gemini yet — the "answer" is always a random local quote (see
-/// QuoteRepository / MVP-06). Gemini replaces the quote pick in the V1
-/// milestone (FF-01) without needing to change this state machine shape:
-/// _respond's `isDowngraded: false` branch is where that call goes: today
-/// it's identical to the downgraded branch (both just pick a local quote),
-/// but the split already exists so wiring Gemini in later doesn't touch the
-/// quota logic at all.
+/// `_respond`'s `isDowngraded: false` branch calls Gemini (FF-01) via
+/// [GeminiService]; `isDowngraded: true` (ad declined at quota exhaustion,
+/// see #16) keeps the pure local [QuoteRepository] pick — deliberately never
+/// spends a Gemini call there. A Gemini timeout/error also falls back to a
+/// local quote, so the quote pool is a permanent safety net, not just an
+/// MVP placeholder.
 ///
 /// Quota (FF-04) only gates voice turns — a transcript that produces a sent
 /// query. Typed fallback text is uncapped, per FF-04's own spec.
@@ -26,11 +27,13 @@ class ConversationCubit extends Cubit<ConversationState> {
     required TtsService ttsService,
     required QuoteRepository quoteRepository,
     required QuotaCubit quotaCubit,
+    required GeminiService geminiService,
   })  : _stageCubit = stageCubit,
         _speechService = speechService,
         _ttsService = ttsService,
         _quoteRepository = quoteRepository,
         _quotaCubit = quotaCubit,
+        _geminiService = geminiService,
         super(const ConversationState());
 
   final StageCubit _stageCubit;
@@ -38,6 +41,7 @@ class ConversationCubit extends Cubit<ConversationState> {
   final TtsService _ttsService;
   final QuoteRepository _quoteRepository;
   final QuotaCubit _quotaCubit;
+  final GeminiService _geminiService;
 
   // Set when a voice turn is waiting on the Support-sheet decision (quota
   // exhausted). Not part of ConversationState — it's plumbing, not something
@@ -150,12 +154,36 @@ class ConversationCubit extends Cubit<ConversationState> {
     // and the sum was reading as a genuinely long pause.
     await Future<void>.delayed(const Duration(milliseconds: 250));
 
-    // isDowngraded is unused today — both branches pick a local quote,
-    // since Gemini (FF-01) doesn't exist yet. Once it does, !isDowngraded
-    // calls Gemini with the pending transcript; isDowngraded keeps this path.
     final isHindi = _speechService.isHindiLocale;
-    final quote = _quoteRepository.pickRandom();
-    final responseText = _quoteRepository.textFor(quote, isHindi: isHindi);
+    final transcript = state.lastTranscript ?? '';
+
+    // FF-03: keyword hit is source of truth regardless of quota state — a
+    // declined ad shouldn't hide the strip from someone in real distress.
+    if (!state.showCrisisStrip && CrisisClassifier.isCrisis(transcript)) {
+      emit(state.copyWith(showCrisisStrip: true));
+    }
+
+    String responseText;
+    if (isDowngraded) {
+      // Ad declined at quota exhaustion (#16) — don't spend a Gemini call,
+      // stay on the free local quote pool.
+      final quote = _quoteRepository.pickRandom();
+      responseText = _quoteRepository.textFor(quote, isHindi: isHindi);
+    } else {
+      final geminiReply = await _geminiService.respond(transcript);
+      if (geminiReply != null) {
+        responseText = geminiReply;
+      } else {
+        // Timeout/error fallback (#13 acceptance): apologetic in-character
+        // line, then the same permanent local-quote safety net.
+        final quote = _quoteRepository.pickRandom();
+        final apology = isHindi
+            ? 'क्षमा करें, अभी संपर्क में थोड़ी रुकावट आई — यह लीजिए एक और विचार।'
+            : "My connection wavered just now — here's another thought instead.";
+        responseText = '$apology\n${_quoteRepository.textFor(quote, isHindi: isHindi)}';
+      }
+    }
+
     emit(state.copyWith(lastResponseText: responseText));
 
     await _ttsService.speak(

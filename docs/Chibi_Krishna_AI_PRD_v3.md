@@ -130,13 +130,14 @@ Text on that fallback path is **generous** (uncapped or a very high cap). Voice 
 
 ```
 Mic → Android SpeechRecognizer (on-device/OS)
-  → Gemini Flash (Google AI Studio API key in .env), hard timeout 8s
+  → Gemini via Firebase AI Logic (Gemini Developer API backend), hard timeout 8s
   → Android TextToSpeech
 ```
 
 - **No** Deepgram, **no** Cartesia, **no** ElevenLabs in V1.
 - **No** application backend. Quota, profile, and event counters in **local SQLite**.
-- Gemini model: cheap **Flash** class (pin model id at implementation; confirm current name in AI Studio).
+- **No API key ships in the app.** Gemini is called through **Firebase AI Logic**'s client SDK (`firebase_ai` + `firebase_core`), authenticated via the Firebase project (+ App Check), not a bundled `GEMINI_API_KEY` — avoids shipping a secret inside the APK asset bundle. Backend: **Gemini Developer API** (not Vertex AI) — no Cloud Billing account required, generous free tier, matches the no-backend/budget-conscious constraint.
+- Gemini model: cheap **Flash-Lite** class — currently `gemini-3.5-flash-lite` (pin the id in one constant in `GeminiService`; re-check current name/support window in the Firebase AI Logic docs before each future model bump).
 
 ### 8.2 System prompt (oracle)
 

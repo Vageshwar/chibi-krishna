@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "51027558725",
+    "project_id": "chibi-krishna-ai",
+    "storage_bucket": "chibi-krishna-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:51027558725:android:c461ebd82186186f75be2c",
+        "android_client_info": {
+          "package_name": "com.chibikrishna.chibi_krishna"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAoFrv2FjdtEHPG8JnbbMyZQ68K1v61ims"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
