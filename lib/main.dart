@@ -295,14 +295,24 @@ class _HomeScreenState extends State<HomeScreen> {
                               },
                             );
                           }
-                          return _MicButton(
-                            isListening: state.isListening,
-                            isBusy: state.isBusy,
-                            liveTranscript: state.liveTranscript,
-                            micLevel: state.micLevel,
-                            onTap: () => context
-                                .read<ConversationCubit>()
-                                .startListening(),
+                          // Thinking status comes from StageCubit (already
+                          // set right before the Gemini call in
+                          // ConversationCubit._respond) rather than adding a
+                          // redundant flag to ConversationState.
+                          return BlocBuilder<StageCubit, StageState>(
+                            buildWhen: (prev, curr) =>
+                                prev.animationState != curr.animationState,
+                            builder: (context, stageState) => _MicButton(
+                              isListening: state.isListening,
+                              isBusy: state.isBusy,
+                              isThinking: stageState.animationState ==
+                                  ChibiAnimationState.thinking,
+                              liveTranscript: state.liveTranscript,
+                              micLevel: state.micLevel,
+                              onTap: () => context
+                                  .read<ConversationCubit>()
+                                  .startListening(),
+                            ),
                           );
                         },
                       ),
@@ -551,6 +561,7 @@ class _ResponseCard extends StatelessWidget {
 class _MicButton extends StatelessWidget {
   final bool isListening;
   final bool isBusy;
+  final bool isThinking;
   final String liveTranscript;
   final double micLevel;
   final VoidCallback onTap;
@@ -558,6 +569,7 @@ class _MicButton extends StatelessWidget {
   const _MicButton({
     required this.isListening,
     required this.isBusy,
+    required this.isThinking,
     required this.liveTranscript,
     required this.micLevel,
     required this.onTap,
@@ -591,6 +603,22 @@ class _MicButton extends StatelessWidget {
             const SizedBox(height: 6),
             _Equalizer(level: micLevel),
             const SizedBox(height: 10),
+          ] else if (isThinking) ...[
+            // Covers the Gemini round-trip (up to the 8s timeout) — without
+            // this, that gap looked like the app had gone unresponsive.
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+              child: Text(
+                'Krishna is thinking…',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 16),
           ],
           // Mic-glow overlay per MVP-02: listening feedback is UI-only, not a
           // dedicated Rive pose.
