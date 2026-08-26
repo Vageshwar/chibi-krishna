@@ -5,13 +5,13 @@
 `feature/sprint-1-foundation` (GitHub Pages is configured to serve `/docs` from that branch). This
 `.md` file is the source-of-truth draft — **edit this file first, then port changes into the `.html`
 version**, they're not auto-synced. Contact email is `vageshwar.dev@gmail.com`. Re-check this document against the code any time a new data-touching
-feature ships (Gemini/FF-01, Firebase Analytics/FF-09, notifications/FF-08, referral/FF-07 are all
-V1 additions not in the app yet, and each will need a line added here when they land) — don't let
-this drift the way `PRD_v2.md` did.
+feature ships — Gemini/FF-01 landed 2026-08-26 (this revision covers it); Firebase
+Analytics/FF-09, notifications/FF-08, and referral/FF-07 are still V1 additions not in the app yet,
+and each will need a line added here when they land — don't let this drift the way `PRD_v2.md` did.
 
 ---
 
-**Effective date:** 25 August 2026
+**Effective date:** 26 August 2026
 
 Chibi Krishna AI ("the app," "we," "us") is developed by Vageshwar. This policy explains what the
 app does and does not do with your data.
@@ -21,6 +21,8 @@ app does and does not do with your data.
 - No account, no sign-up, no name, no email, no phone number — the app doesn't ask for any of these.
 - Your voice is processed by your device's own speech recognition to turn it into text; the app
   does not record, store, or transmit audio itself.
+- Your question's **text** (not audio) is sent to Google's Gemini AI model to generate the app's
+  response — see "AI responses" below for exactly what is and isn't sent.
 - The app shows ads (Google AdMob) and uses your device's advertising identifier for that.
 - A small amount of usage data (how many questions you've asked today) is stored **only on your
   device** — never sent anywhere, gone if you uninstall the app.
@@ -42,6 +44,27 @@ standard OS behavior, controlled by your device, not by this app). The app itsel
   not saved after your session ends.
 
 You can always deny microphone access; the app falls back to a text input box instead.
+
+### AI responses (Google Gemini, via Firebase AI Logic)
+
+When you ask a question (by voice or typed text), the **text** of that question is sent to a
+Google Gemini AI model — using Firebase AI Logic, Google's own integration path for calling Gemini
+from an app, rather than a raw API key embedded in the app. Each question is sent on its own,
+without your prior questions attached, and without any account or device-identifying profile tied
+to you. What is sent:
+
+- the text of your current question only,
+- a short fixed instruction set (persona, tone, safety rules) that doesn't vary per user and
+  contains no personal data.
+
+What is **not** sent: your voice recording, your name, your location, your device's advertising
+identifier, or a history of your past questions. Google's Gemini API data-handling terms apply to
+this processing — see <https://ai.google.dev/gemini-api/terms>. Firebase App Check is used
+alongside this to confirm requests come from a genuine copy of the app (an anti-abuse measure); it
+does not identify you personally.
+
+If the AI service is slow or unavailable, the app falls back to a small set of pre-written local
+quotes instead — no data is sent anywhere in that fallback path.
 
 ### Advertising (Google AdMob)
 
@@ -68,9 +91,10 @@ you've asked today and how many bonus questions you've earned from watching ads.
 ### What we don't collect
 
 No account or login. No name, email, or phone number. No location. No contacts. No photos or
-files. No persistent profile of you as a user. No transcript of what you've said is stored beyond
-your current session. We don't have a backend server, so there's nowhere for this data to be sent
-even if the app wanted to send it.
+files. No persistent profile of you as a user. We don't run our own backend server, don't store
+your transcript beyond your current session ourselves, and don't attach any history of past
+questions when sending a new one to Google's Gemini API. Google's own terms govern how they handle
+that submitted text on their end — see "AI responses" above.
 
 ## Children
 
@@ -92,9 +116,12 @@ request process beyond the above — there's nothing on a server to delete.
 
 ## Changes to this policy
 
-If what the app collects or does changes (for example, when Gemini-powered responses or analytics
-are added in a future update), this policy will be updated and the effective date above will
-change.
+If what the app collects or does changes (for example, when analytics or notifications are added in
+a future update), this policy will be updated and the effective date above will change.
+
+## Terms of Service
+
+See our [Terms of Service](terms-of-service.html) for the rules governing your use of the app.
 
 ## Contact
 
