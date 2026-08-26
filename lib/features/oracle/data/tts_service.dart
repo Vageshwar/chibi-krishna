@@ -9,6 +9,13 @@ import 'package:flutter_tts/flutter_tts.dart';
 /// while speech is active, zeroed on completion) — matches PRD v3 §10's
 /// "envelope is fine" allowance.
 class TtsService {
+  // Slightly raised from flutter_tts's neutral 1.0 to read younger — matches
+  // the persona ("playful Bal Leela, roughly 6-8 in tone", PRD v3 §1). Free,
+  // on-device lever; no paid voice vendor needed for this. Valid range is
+  // roughly 0.5-2.0 depending on platform; stayed conservative to avoid a
+  // cartoonish/chipmunk effect.
+  static const double _pitch = 1.2;
+
   final FlutterTts _tts = FlutterTts();
   Timer? _envelopeTimer;
   final Random _random = Random();
@@ -75,6 +82,7 @@ class TtsService {
       }
     }
     await _tts.setSpeechRate(0.45);
+    await _tts.setPitch(_pitch);
     await _tts.speak(text);
   }
 
