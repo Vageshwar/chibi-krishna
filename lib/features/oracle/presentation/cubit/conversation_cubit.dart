@@ -144,7 +144,11 @@ class ConversationCubit extends Cubit<ConversationState> {
 
   Future<void> _respond({required bool isDowngraded}) async {
     _stageCubit.setAnimationState(ChibiAnimationState.thinking);
-    await Future<void>.delayed(const Duration(milliseconds: 600));
+    // Just enough to register the thinking pose as its own beat, not a
+    // deliberate "make Krishna look busy" delay — trimmed from 600ms since
+    // it stacks with speech_to_text's own pauseFor and TTS engine warm-up,
+    // and the sum was reading as a genuinely long pause.
+    await Future<void>.delayed(const Duration(milliseconds: 250));
 
     // isDowngraded is unused today — both branches pick a local quote,
     // since Gemini (FF-01) doesn't exist yet. Once it does, !isDowngraded

@@ -46,8 +46,10 @@ class SpeechService {
 
   /// Starts one listening turn. [onFinalResult] fires once, with the final
   /// transcript (empty string if the recognizer heard nothing) — the pause
-  /// that ends the turn is speech_to_text's own pauseFor detection (3s of
-  /// silence auto-finalizes, with a 20s hard cap either way).
+  /// that ends the turn is speech_to_text's own pauseFor detection (1.2s of
+  /// silence auto-finalizes, with a 20s hard cap either way). Kept short
+  /// since this app takes short spoken questions, not dictation — a longer
+  /// pauseFor mostly just adds dead air before Krishna reacts.
   /// [onPartialResult] fires repeatedly while listening, for live captions.
   /// [onSoundLevel] fires with a raw (platform-dependent, roughly-dB) level
   /// while listening, for a "something is being recorded" visual.
@@ -72,7 +74,7 @@ class SpeechService {
       listenOptions: SpeechListenOptions(
         localeId: _selectedLocaleId,
         listenFor: const Duration(seconds: 20),
-        pauseFor: const Duration(seconds: 3),
+        pauseFor: const Duration(milliseconds: 1200),
       ),
     );
   }
