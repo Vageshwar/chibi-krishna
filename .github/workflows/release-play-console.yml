@@ -28,6 +28,17 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # workflow_dispatch is otherwise triggerable by anyone with write
+      # access to the repo, not just the owner — this fails the run before
+      # any build/signing/upload step if someone else triggers it. Compares
+      # against repository_owner rather than a hardcoded username so it
+      # stays correct if ownership ever changes.
+      - name: Restrict to repo owner
+        if: github.actor != github.repository_owner
+        run: |
+          echo "::error::Only the repository owner (${{ github.repository_owner }}) may trigger this workflow. Triggered by: ${{ github.actor }}"
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
 
