@@ -174,8 +174,11 @@ class _ChibiStageViewState extends State<ChibiStageView> with SingleTickerProvid
         _eyeInput?.value = 'open_big';
         break;
       case ChibiAnimationState.thinking:
-        _posesInput?.value = 'Idle';
-        _emotionInput?.value = 'Thniking';
+        // Was poses: Idle / emotion: Thniking — read as a weird/frowning
+        // expression in live testing (#39). Swapped per user's pick after
+        // reviewing the ViewModel's actual pose/emotion options.
+        _posesInput?.value = 'idle_lookaround';
+        _emotionInput?.value = 'Opps01';
         _eyeInput?.value = 'open_small';
         break;
       case ChibiAnimationState.speaking:

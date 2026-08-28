@@ -1,16 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/services/audio_service.dart';
 import '../../../monetization/data/consent_service.dart';
+import '../../../oracle/data/speech_service.dart';
+import '../../../oracle/presentation/cubit/conversation_cubit.dart';
 
 /// MVP-04 / #27: reachable from a small info button on the home screen.
 /// Carries the three things CLAUDE.md and PRD v3 §3/§9 require in the app
 /// itself, permanently (not just once-per-session in voice): the AI-avatar
 /// disclaimer, CC BY 4.0 attribution for the KrishnaJI Rive character, and a
-/// link to the published privacy policy.
-class AboutScreen extends StatelessWidget {
-  const AboutScreen({super.key});
+/// link to the published privacy policy. Also hosts the #40 background-music
+/// mute toggle — no other settings surface exists in the app yet.
+class AboutScreen extends StatefulWidget {
+  final BackgroundAudioService audioService;
 
+  const AboutScreen({super.key, required this.audioService});
+
+  @override
+  State<AboutScreen> createState() => _AboutScreenState();
+}
+
+class _AboutScreenState extends State<AboutScreen> {
   static const _privacyPolicyUrl =
       'https://vageshwar.github.io/chibi-krishna/legal/privacy-policy.html';
   static const _termsOfServiceUrl =
@@ -52,6 +64,73 @@ class AboutScreen extends StatelessWidget {
             style: TextStyle(color: Colors.white, fontSize: 15, height: 1.5),
           ),
           const SizedBox(height: 28),
+          const _SectionTitle('Sound'),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: const Color(0xFFFFD700),
+            title: const Text(
+              'Background music',
+              style: TextStyle(color: Colors.white, fontSize: 15),
+            ),
+            value: !widget.audioService.isMuted,
+            onChanged: (enabled) async {
+              // Awaiting before setState (rather than firing the async call
+              // inside setState's callback and hoping its synchronous
+              // prefix already landed) — matches the fix applied to the
+              // language radios below, same defensive reasoning.
+              await widget.audioService.setMuted(!enabled);
+              if (mounted) setState(() {});
+            },
+          ),
+          const SizedBox(height: 20),
+          const _SectionTitle('Voice language'),
+          const SizedBox(height: 4),
+          const Text(
+            'Automatic follows your device language. Override it here if '
+            "you'd like Krishna to always listen in a specific language.",
+            style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 4),
+          Builder(
+            builder: (context) {
+              final cubit = context.read<ConversationCubit>();
+              // Deliberately using the per-tile groupValue/onChanged API
+              // (soft-deprecated in favor of RadioGroup) rather than
+              // RadioGroup itself — verified live on-device that RadioGroup
+              // doesn't propagate an updated groupValue to its descendant
+              // RadioListTiles on rebuild in this Flutter version, so the
+              // selection visually never changed even though the underlying
+              // preference genuinely updated. This pattern is proven to work.
+              return Column(
+                children: [
+                  for (final option in VoiceLanguagePreference.values)
+                    RadioListTile<VoiceLanguagePreference>(
+                      contentPadding: EdgeInsets.zero,
+                      activeColor: const Color(0xFFFFD700),
+                      title: Text(
+                        switch (option) {
+                          VoiceLanguagePreference.auto => 'Automatic (device language)',
+                          VoiceLanguagePreference.hindi => 'Hindi',
+                          VoiceLanguagePreference.english => 'English',
+                        },
+                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                      ),
+                      value: option,
+                      // ignore: deprecated_member_use
+                      groupValue: cubit.languagePreference,
+                      // ignore: deprecated_member_use
+                      onChanged: (selected) async {
+                        if (selected == null) return;
+                        await cubit.setLanguagePreference(selected);
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 20),
           const _SectionTitle('Character credit'),
           const SizedBox(height: 8),
           const Text(

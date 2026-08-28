@@ -1,15 +1,26 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+
+const _languagePrefKey = 'voice_language_preference';
+
+/// User-facing override for which language Krishna listens in — surfaced in
+/// the About screen. `auto` keeps the existing device-locale-based pick
+/// (see `_pickLocale`); `hindi`/`english` force that language regardless of
+/// what the device's system locale is.
+enum VoiceLanguagePreference { auto, hindi, english }
 
 /// Wraps speech_to_text: requests mic permission on initialize(), picks
 /// hi-IN by default per PRD v3 §5, falling back to en-IN/en-US if the
-/// device/browser doesn't offer Hindi recognition.
+/// device/browser doesn't offer Hindi recognition — unless overridden by
+/// [VoiceLanguagePreference].
 class SpeechService {
   final SpeechToText _speech = SpeechToText();
   bool _isAvailable = false;
   String _selectedLocaleId = 'en_US';
+  VoiceLanguagePreference _preference = VoiceLanguagePreference.auto;
 
   // The current turn's onFinalResult, held so the global onError handler
   // below (registered once in initialize(), not per-listen()) can resolve
@@ -29,8 +40,19 @@ class SpeechService {
 
   bool get isAvailable => _isAvailable;
   bool get isHindiLocale => _selectedLocaleId.toLowerCase().startsWith('hi');
+  VoiceLanguagePreference get languagePreference => _preference;
 
   Future<bool> initialize() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_languagePrefKey);
+      _preference = VoiceLanguagePreference.values.firstWhere(
+        (p) => p.name == saved,
+        orElse: () => VoiceLanguagePreference.auto,
+      );
+    } catch (e) {
+      debugPrint('SpeechService language-preference load note: $e');
+    }
     try {
       _isAvailable = await _speech.initialize(
         onError: (e) {
@@ -50,15 +72,42 @@ class SpeechService {
     return _isAvailable;
   }
 
+  /// #7-adjacent: manual override from the About screen. Persists and takes
+  /// effect on the next `listen()` call — no restart needed. Keeps `auto`'s
+  /// existing device-locale-based behavior as the default (untouched).
+  Future<void> setLanguagePreference(VoiceLanguagePreference preference) async {
+    _preference = preference;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_languagePrefKey, preference.name);
+    } catch (e) {
+      debugPrint('SpeechService language-preference save note: $e');
+    }
+    if (_isAvailable) {
+      _selectedLocaleId = await _pickLocale();
+      debugPrint('SpeechService: using locale "$_selectedLocaleId" (preference: ${preference.name})');
+    }
+  }
+
   Future<String> _pickLocale() async {
     try {
       final locales = await _speech.locales();
       bool has(String id) => locales.any((l) => l.localeId.toLowerCase() == id.toLowerCase());
-      if (has('hi_IN')) return 'hi_IN';
-      if (has('en_IN')) return 'en_IN';
-      if (has('en_US')) return 'en_US';
-      final system = await _speech.systemLocale();
-      return system?.localeId ?? 'en_US';
+      switch (_preference) {
+        case VoiceLanguagePreference.hindi:
+          if (has('hi_IN')) return 'hi_IN';
+          return 'en_US';
+        case VoiceLanguagePreference.english:
+          if (has('en_IN')) return 'en_IN';
+          if (has('en_US')) return 'en_US';
+          return 'en_US';
+        case VoiceLanguagePreference.auto:
+          if (has('hi_IN')) return 'hi_IN';
+          if (has('en_IN')) return 'en_IN';
+          if (has('en_US')) return 'en_US';
+          final system = await _speech.systemLocale();
+          return system?.localeId ?? 'en_US';
+      }
     } catch (e) {
       debugPrint('SpeechService locale lookup note: $e');
       return 'en_US';
