@@ -48,6 +48,11 @@ class ConversationCubit extends Cubit<ConversationState> {
   // any widget renders directly.
   bool _pendingVoiceQuery = false;
 
+  /// About screen's language override — passthrough to [SpeechService].
+  VoiceLanguagePreference get languagePreference => _speechService.languagePreference;
+  Future<void> setLanguagePreference(VoiceLanguagePreference preference) =>
+      _speechService.setLanguagePreference(preference);
+
   Future<void> initialize() async {
     await _quoteRepository.load();
     await _ttsService.initialize();

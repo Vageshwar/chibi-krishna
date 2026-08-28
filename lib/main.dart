@@ -340,7 +340,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.only(top: 12),
                   child: _AboutButton(
                     onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AboutScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => AboutScreen(audioService: widget.audioService),
+                      ),
                     ),
                   ),
                 ),
