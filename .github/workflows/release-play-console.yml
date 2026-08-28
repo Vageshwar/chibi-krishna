@@ -1,0 +1,101 @@
+name: Release to Play Console
+
+# Manual only — this ships a real build to a real Play Console track,
+# nothing here should ever run on a push/PR trigger.
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play Console track to release to"
+        required: true
+        type: choice
+        default: internal
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+      release_notes:
+        description: "Release notes for this build (optional)"
+        required: false
+        default: ""
+
+concurrency:
+  group: release-play-console
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # workflow_dispatch is otherwise triggerable by anyone with write
+      # access to the repo, not just the owner — this fails the run before
+      # any build/signing/upload step if someone else triggers it. Compares
+      # against repository_owner rather than a hardcoded username so it
+      # stays correct if ownership ever changes.
+      - name: Restrict to repo owner
+        if: github.actor != github.repository_owner
+        run: |
+          echo "::error::Only the repository owner (${{ github.repository_owner }}) may trigger this workflow. Triggered by: ${{ github.actor }}"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # android/app/upload-keystore.jks and android/key.properties are
+      # gitignored on purpose (see #34) — reconstructed here from repo
+      # secrets for this build only, never written back to the repo.
+      - name: Decode signing keystore
+        run: echo "${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}" | base64 -d > android/app/upload-keystore.jks
+
+      - name: Write key.properties
+        run: |
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.PLAY_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.PLAY_KEY_PASSWORD }}
+          keyAlias=${{ secrets.PLAY_KEY_ALIAS }}
+          storeFile=upload-keystore.jks
+          EOF
+
+      # versionName stays whatever's in pubspec.yaml (bumped manually);
+      # only versionCode is auto-incremented, using the workflow's own run
+      # number so it's always strictly increasing across releases, per
+      # Play Console's requirement.
+      - name: Build release App Bundle
+        run: flutter build appbundle --release --build-number=${{ github.run_number }}
+
+      - name: Prepare release notes
+        run: |
+          mkdir -p distribution/whatsnew
+          notes="${{ github.event.inputs.release_notes }}"
+          if [ -z "$notes" ]; then
+            notes="Bug fixes and improvements."
+          fi
+          echo "$notes" > distribution/whatsnew/whatsnew-en-US
+
+      # Production defaults to a draft release — needs a manual "Rollout"
+      # click in Play Console — internal/alpha/beta publish immediately
+      # since those don't reach real users without an opt-in anyway.
+      - name: Upload to Play Console
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.chibikrishna.chibi_krishna
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          track: ${{ github.event.inputs.track }}
+          status: ${{ github.event.inputs.track == 'production' && 'draft' || 'completed' }}
+          whatsNewDirectory: distribution/whatsnew
