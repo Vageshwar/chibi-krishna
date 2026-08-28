@@ -56,6 +56,15 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # .env is gitignored (has real AdMob IDs) but pubspec.yaml bundles it
+      # as an asset — flutter build fails on a fresh checkout without it.
+      # Reconstructed here from a secret, never written back to the repo.
+      - name: Write .env
+        run: |
+          cat > .env <<'ENVEOF'
+          ${{ secrets.ENV_FILE }}
+          ENVEOF
+
       # android/app/upload-keystore.jks and android/key.properties are
       # gitignored on purpose (see #34) — reconstructed here from repo
       # secrets for this build only, never written back to the repo.
