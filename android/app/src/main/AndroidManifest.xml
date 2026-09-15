@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="chibi_krishna"
+        android:label="Chibi Krishna AI"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity
