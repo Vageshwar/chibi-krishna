@@ -246,7 +246,10 @@ class _HomeScreenState extends State<HomeScreen> {
               buildWhen: (prev, curr) =>
                   prev.showCrisisStrip != curr.showCrisisStrip,
               builder: (context, crisisState) => Positioned(
-                top: crisisState.showCrisisStrip ? 44 : 0,
+                // Was tuned to 44 for a single-line strip; now 3 lines
+                // (family prompt + emergency/KIRAN + iCALL), still
+                // approximate/not measured, but scaled up accordingly.
+                top: crisisState.showCrisisStrip ? 100 : 0,
                 left: 64, // clears the About button in the top-left corner
                 right: 64, // clears the support button in the top-right corner
                 child: SafeArea(

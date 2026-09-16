@@ -18,17 +18,36 @@ class CrisisStrip extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Icon(Icons.favorite, color: Colors.white, size: 20),
               const SizedBox(width: 10),
+              // Three short lines rather than one run-on sentence — now that
+              // there are two helplines plus the family prompt, cramming
+              // everything into a single Text overflowed on narrow screens.
               Expanded(
-                child: Text(
-                  '${Helplines.familyPrompt} ${Helplines.indiaEmergencyLabel} · ${Helplines.counselingLabel}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    height: 1.3,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      Helplines.familyPrompt,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                    ),
+                    Text(
+                      '${Helplines.indiaEmergencyLabel} · ${Helplines.kiranLabel}',
+                      style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.3),
+                    ),
+                    Text(
+                      Helplines.counselingLabel,
+                      style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.3),
+                    ),
+                  ],
                 ),
               ),
             ],
